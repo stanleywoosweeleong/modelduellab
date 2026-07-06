@@ -1,0 +1,2154 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0e8ba8">
+<title>ModelDuel Lab · 天气模型争霸战</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="152x152" href="./icon-152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="./icon-167.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="icon" type="image/svg+xml" href="./icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ModelDuel 争霸战">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+  :root{
+    /* Light theme — warm paper background, soft off-white cards, deep soft-black ink */
+    --bg:#f4f1ea; --panel:#fdfbf7; --panel2:#f4f0e8; --panel3:#ebe6db;
+    --ink:#26302e; --ink-mid:#4a5551; --ink-dim:#6f7a75; --line:#e2dccf;
+    --accent:#0e8ba8; --accent-dark:#0a6a80; --accent-soft:#d3ecf3;
+    --met:#c26a05; --met-soft:#fbeed9; --met-line:#eecfa0;
+    --ecmwf:#2258bd; --ecmwf-soft:#e5ecfa; --ecmwf-line:#bacef0;
+    --win:#0a6a80; --danger:#c53d3d; --danger-soft:#f9e2e0;
+    --ok:#0a6a80; --ok-soft:#d3ecf3; --warn:#a5760f; --warn-soft:#f8eecf;
+    --mono:ui-monospace,'DejaVu Sans Mono',monospace;
+    --shadow:0 1px 2px rgba(45,40,30,.05),0 4px 16px rgba(45,40,30,.07);
+    --shadow-lg:0 8px 30px rgba(45,40,30,.16);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',system-ui,sans-serif;
+    font-weight:450;line-height:1.55;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  header{padding:16px 16px 13px;border-bottom:1px solid var(--line);
+    background:linear-gradient(135deg,#0e8ba8,#0a6a80);position:sticky;top:0;z-index:20;
+    box-shadow:0 2px 10px rgba(10,106,128,.22)}
+  .hdr-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .brand{min-width:0;flex:1}
+  .brand h1{font-size:1.24rem;margin:0;letter-spacing:.3px;color:#fff;font-weight:700;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brand .sub{color:rgba(255,255,255,.82);font-size:.76rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hdr-btns{display:flex;gap:8px;flex-shrink:0}
+  .ic{width:38px;height:38px;flex-shrink:0;min-width:38px;border-radius:11px;
+    background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);color:#fff;
+    font-size:1.15rem;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;
+    transition:background .15s}
+  .ic:active{background:rgba(255,255,255,.28)}
+  .ic.on{background:#fff;color:var(--accent);border-color:#fff}
+  .ic-lang{width:auto;min-width:56px;padding:0 13px;font-size:.82rem;font-weight:700;
+    white-space:nowrap;letter-spacing:.3px}
+  main{padding:15px 12px 40px;max-width:780px;margin:0 auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;
+    margin-bottom:13px;box-shadow:var(--shadow)}
+  .card h2{font-size:.98rem;margin:0 0 12px;display:flex;align-items:center;gap:8px;
+    color:var(--ink);font-weight:700}
+  label.fld{display:block;font-size:.76rem;color:var(--ink-mid);margin:9px 0 4px;font-weight:500}
+  select,input[type=text],input[type=date],input[type=number]{width:100%;background:var(--panel2);
+    border:1px solid var(--line);color:var(--ink);padding:11px;border-radius:11px;font-size:.9rem;
+    font-family:inherit;transition:border-color .15s,box-shadow .15s}
+  select:focus,input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  ::placeholder{color:var(--ink-dim)}
+  .row{display:flex;gap:9px}.row>*{flex:1;min-width:0}
+  .btn{background:var(--accent);color:#fff;border:none;padding:13px;border-radius:12px;
+    font-weight:700;font-size:.9rem;width:100%;cursor:pointer;margin-top:11px;font-family:inherit;
+    box-shadow:0 2px 8px rgba(14,139,168,.28);transition:transform .1s,box-shadow .15s}
+  .btn:active{transform:scale(.985);box-shadow:0 1px 4px rgba(14,139,168,.22)}
+  .btn.ghost{background:var(--panel);color:var(--ink-mid);border:1px solid var(--line);
+    font-weight:600;box-shadow:none}
+  .btn.ghost:active{background:var(--panel2)}
+  .btn.sm{width:auto;padding:9px 14px;margin-top:0;font-size:.82rem}
+  .gps-btn{background:var(--accent-soft);border:1px solid var(--accent);color:var(--accent-dark);
+    border-radius:11px;padding:11px;width:100%;cursor:pointer;font-family:inherit;font-size:.84rem;
+    margin-top:8px;font-weight:600}
+  .gps-btn:active{background:#c3e8e1}
+  .filter-wrap{margin-bottom:10px}
+  .region{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden;background:var(--panel2)}
+  .region-hd{display:flex;align-items:center;justify-content:space-between;padding:12px 13px;cursor:pointer}
+  .region-hd:active{background:var(--panel3)}
+  .region-hd .rn{font-size:.85rem;font-weight:600;color:var(--ink)}
+  .region-hd .rc{font-size:.72rem;color:var(--ink-dim);font-family:var(--mono)}
+  .region-right{display:flex;align-items:center;gap:8px}
+  .rgn-fetch{background:var(--panel);border:1px solid var(--line);color:var(--accent-dark);
+    border-radius:8px;width:30px;height:26px;font-size:.9rem;line-height:1;cursor:pointer;
+    padding:0;flex-shrink:0;font-family:inherit;transition:background .15s}
+  .rgn-fetch:active{background:var(--accent-soft)}
+  .rgn-fetch.busy{background:var(--accent);color:#fff;border-color:var(--accent);
+    width:auto;padding:0 9px;font-size:.72rem;font-weight:700;font-family:var(--mono)}
+  .rgn-fetch.busy .rf-ico{display:inline-block;animation:rfspin 1s linear infinite}
+  @keyframes rfspin{to{transform:rotate(360deg)}}
+  .region-body{display:none;border-top:1px solid var(--line);background:var(--panel)}
+  .region.open .region-body{display:block}
+  .chev{transition:transform .15s;color:var(--ink-dim);font-size:.8rem}
+  .master-hd{display:flex;align-items:center;justify-content:space-between;cursor:pointer;margin:0!important}
+  .master-right{display:flex;align-items:center;gap:8px;min-width:0}
+  .master-hint{font-size:.76rem;color:var(--accent);font-weight:600;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;max-width:46vw}
+  .master-chev{transition:none}
+  .loc{display:flex;align-items:center;gap:10px;padding:11px 13px;border-top:1px solid var(--line);cursor:pointer}
+  .loc:first-child{border-top:none}
+  .loc:active{background:var(--panel2)}
+  .loc.sel{background:var(--accent-soft)}
+  .loc .ln{flex:1;min-width:0}
+  .loc .lname{font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+  .loc .lmeta{font-size:.66rem;color:var(--ink-dim);font-family:var(--mono);margin-top:2px;font-weight:500}
+  .loc .lmeta-met{font-size:.66rem;font-family:var(--mono);margin-top:2px;font-weight:500}
+  .loc .met-town{color:var(--met);font-weight:600}
+  .loc .edit{color:var(--ink-dim);font-size:.95rem;padding:4px 6px;flex-shrink:0}
+  .loc .del{color:var(--ink-dim);font-size:1rem;padding:4px 8px;flex-shrink:0}
+  .editing-tag{background:var(--accent-soft);border:1px solid var(--accent);color:var(--accent-dark);
+    border-radius:9px;padding:8px 11px;font-size:.76rem;margin-bottom:10px;font-weight:600}
+  .sec-head{font-size:.8rem;font-weight:700;color:var(--accent);letter-spacing:.5px;
+    text-transform:uppercase;margin:2px 0 8px}
+  .sec-divider{height:1px;background:var(--line);margin:16px 0 4px}
+  .loc.deleted{opacity:.6}.loc.deleted .lname{text-decoration:line-through}
+  .bin{margin-top:12px}
+  .bin summary{color:var(--ink-dim);font-size:.8rem;cursor:pointer;padding:4px 0}
+  .bin .loc{border:none;background:var(--panel2);border-radius:10px;margin-top:8px}
+  .restore{background:var(--panel);border:1px solid var(--accent);color:var(--accent-dark);
+    border-radius:9px;padding:6px 12px;font-size:.74rem;cursor:pointer;flex-shrink:0;font-family:inherit;font-weight:600}
+  .purge-btn{background:var(--danger-soft);border:1px solid var(--danger);color:var(--danger);border-radius:11px;
+    padding:10px;width:100%;margin-top:10px;font-size:.78rem;cursor:pointer;font-family:inherit;font-weight:600}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);border:1px solid rgba(255,255,255,.12);color:#fff;border-radius:13px;
+    padding:12px 15px;font-size:.82rem;display:flex;align-items:center;gap:14px;z-index:50;
+    opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:88vw;
+    box-shadow:var(--shadow-lg)}
+  .toast.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+  .toast button{background:var(--accent);color:#fff;border:none;border-radius:8px;
+    padding:6px 13px;font-weight:700;font-size:.78rem;cursor:pointer;flex-shrink:0;font-family:inherit}
+  .drive-prompt{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;z-index:55;
+    max-width:88vw;width:400px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+    box-shadow:var(--shadow-lg)}
+  .drive-prompt.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+  .drive-prompt .dp-text{font-size:.86rem;color:var(--ink);line-height:1.5;margin-bottom:12px}
+  .drive-prompt .dp-btns{display:flex;gap:8px;flex-wrap:wrap}
+  .drive-prompt button{border:none;border-radius:9px;padding:9px 14px;font-size:.82rem;font-weight:600;
+    cursor:pointer;font-family:inherit}
+  .drive-prompt .dp-go{background:var(--accent);color:#fff;flex:1}
+  .drive-prompt .dp-skip{background:var(--panel2);color:var(--ink-mid);border:1px solid var(--line)}
+  .drive-prompt .dp-off{background:transparent;color:var(--danger);border:1px solid var(--danger-soft)}
+  .badge{font-size:.62rem;padding:2px 8px;border-radius:20px;background:var(--panel2);color:var(--ink-mid);
+    border:1px solid var(--line);flex-shrink:0;font-weight:600}
+  .badge.gps{color:var(--ecmwf);background:var(--ecmwf-soft);border-color:var(--ecmwf-line)}
+  .badge.custom{color:var(--met);background:var(--met-soft);border-color:var(--met-line)}
+  /* scoreboard */
+  .scoreboard{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  .team{border-radius:14px;padding:14px;text-align:center;position:relative;overflow:hidden}
+  .team.met{background:var(--met-soft);border:1.5px solid var(--met-line)}
+  .team.ecmwf{background:var(--ecmwf-soft);border:1.5px solid var(--ecmwf-line)}
+  .team .name{font-size:.74rem;letter-spacing:.5px;font-weight:800}
+  .team.met .name{color:var(--met)}.team.ecmwf .name{color:var(--ecmwf)}
+  .team .csi{font-family:var(--mono);font-size:2.1rem;font-weight:700;margin:5px 0 1px;color:var(--ink)}
+  .team .csi-lab{font-size:.72rem;color:var(--ink-mid);letter-spacing:.5px;font-weight:700}
+  .team .metrics{display:flex;justify-content:space-around;margin-top:10px;padding-top:10px;
+    border-top:1px solid rgba(20,35,43,.1)}
+  .team .metrics div{font-size:.7rem;color:var(--ink-mid);font-weight:600}
+  .team .metrics .mlab{color:var(--ink-mid);font-weight:600;display:block;margin-bottom:2px}
+  .team .metrics b{display:block;font-family:var(--mono);font-size:.88rem;color:var(--ink);font-weight:700}
+  .crown{position:absolute;top:7px;right:9px;font-size:.9rem}
+  .verdict{text-align:center;padding:11px;margin-top:11px;border-radius:11px;background:var(--panel2);
+    font-size:.83rem;color:var(--ink-mid);border:1px solid var(--line)}
+  .verdict b{color:var(--win);font-weight:700}
+  .verdict.pending{background:transparent;border:1px dashed var(--line);color:var(--ink-dim);
+    font-size:.78rem;font-weight:400}
+  .amount-row{text-align:center;margin-top:8px;padding:9px 11px;border-radius:10px;
+    background:var(--ecmwf-soft);border:1px solid var(--ecmwf-line);font-size:.78rem;
+    color:var(--ink-mid);display:none}
+  .amount-row b{color:var(--ecmwf);font-weight:700}
+  .share-btn{margin-top:12px;background:#25D366;border:none;color:#fff;font-weight:700;
+    display:flex;align-items:center;justify-content:center;gap:8px}
+  .share-btn:active{background:#1da851}
+  .wa-ico{flex-shrink:0}
+  .share-preview{white-space:pre-wrap;font-family:var(--mono);font-size:.74rem;line-height:1.6;
+    background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:13px;
+    color:var(--ink);max-height:52vh;overflow-y:auto;margin-bottom:14px}
+  .share-actions{display:flex;gap:10px}
+  .share-actions .btn{flex:1;margin:0}
+  .share-actions .btn-wa{background:#25D366;border:none;color:#fff;font-weight:700;
+    display:flex;align-items:center;justify-content:center;gap:7px}
+  .share-actions .btn-wa:active{background:#1da851}
+  .export-btn{margin-top:12px;font-size:.82rem}
+  .app-link{display:flex;flex-direction:column;align-items:center;gap:9px;margin-top:20px;
+    padding-top:18px;border-top:1px solid var(--line)}
+  .app-qr{background:#fff;padding:10px;border-radius:12px;border:1px solid var(--line);line-height:0}
+  .qr-svg{width:130px;height:130px;display:block;fill:#1f2622}
+  .app-url{font-size:.72rem;color:var(--accent-dark);font-family:var(--mono);word-break:break-all;
+    text-align:center;text-decoration:none}
+  .app-url:active{opacity:.6}
+  .thresh-help{margin-top:8px}
+  .thresh-help summary{font-size:.8rem;color:var(--accent-dark);cursor:pointer;font-weight:600;padding:4px 0}
+  .thresh-help-body{font-size:.76rem;color:var(--ink-mid);line-height:1.7;margin-top:6px;
+    padding:10px 12px;background:var(--panel2);border-radius:9px;border:1px solid var(--line)}
+  .thresh-help-body b{color:var(--ink);font-weight:700}
+  .period-grid{margin-top:11px;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+  .period-grid .pg-title{font-size:.74rem;font-weight:700;color:var(--ink-mid);padding:9px 12px;
+    background:var(--panel2);border-bottom:1px solid var(--line)}
+  .pg-table{width:100%;border-collapse:collapse}
+  .pg-table th,.pg-table td{padding:8px 6px;text-align:center;font-size:.74rem}
+  .pg-table thead th{color:var(--ink-dim);font-size:.7rem;font-weight:600;border-bottom:1px solid var(--line)}
+  .pg-table td.pg-model{text-align:left;font-weight:700;font-size:.72rem;padding-left:12px}
+  .pg-table td.pg-model.met{color:var(--met)}.pg-table td.pg-model.ecmwf{color:var(--ecmwf)}
+  .pg-table tbody tr:first-child td{border-bottom:1px solid var(--line)}
+  .pg-cell{font-family:var(--mono);font-weight:700;color:var(--ink)}
+  .pg-cell.win{background:var(--accent-soft);border-radius:6px}
+  .pg-cell.na{color:var(--ink-dim);font-weight:400}
+  .pg-foot{font-size:.66rem;color:var(--ink-dim);padding:7px 12px;border-top:1px solid var(--line);text-align:center}
+  .intro-note{background:var(--accent-soft);border:1px solid var(--accent);border-radius:14px;
+    padding:14px 16px;margin-bottom:13px;box-shadow:var(--shadow)}
+  .intro-head{display:flex;align-items:center;justify-content:space-between;cursor:pointer;
+    font-weight:700;color:var(--accent-dark);font-size:.92rem}
+  .intro-chev{color:var(--accent-dark);font-size:.8rem;opacity:.8}
+  .intro-body{font-size:.82rem;color:var(--ink-mid);line-height:1.6;margin-top:8px}
+  .intro-note.collapsed .intro-body{display:none}
+  .intro-body b{color:var(--accent-dark);font-weight:700}
+  table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:6px}
+  th,td{padding:7px 4px;text-align:center;border-bottom:1px solid var(--line)}
+  th{color:var(--ink-dim);font-size:.66rem;font-weight:600}
+  td.date{text-align:left;font-family:var(--mono);color:var(--ink-mid)}
+  .met-periods{display:flex;gap:3px;margin-top:3px}
+  .ps-dot{font-size:.62rem;width:17px;height:17px;line-height:17px;text-align:center;
+    border-radius:5px;display:inline-block}
+  .ps-dot.ps-rain{background:var(--ecmwf-soft);border:1px solid var(--ecmwf-line);opacity:1}
+  .ps-dot.ps-dry{background:var(--panel2);border:1px solid var(--line);opacity:.55}
+  .ps-dot.ps-na{background:transparent;border:1px dashed var(--line);opacity:.35}
+  .met-periods-legend{font-size:.64rem;color:var(--ink-dim);margin-top:8px;line-height:1.5}
+  /* dark panel for the day-by-day data table only */
+  #log-body{background:#1e2530;border-radius:12px;padding:10px 12px 12px;margin-top:8px}
+  #log-body table{margin-top:0}
+  #log-body th{color:#9fb0c3}
+  #log-body th,#log-body td{border-bottom:1px solid rgba(255,255,255,0.08)}
+  #log-body tr:last-child td{border-bottom:none}
+  #log-body td.date{color:#e6ebf1}
+  #log-body .met-periods-legend{color:#9aa8b8}
+  #log-body .hit{color:#4fd1a5}
+  #log-body .miss{color:#ff8a8a}
+  #log-body .ps-dot.ps-dry{background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.14)}
+  #log-body .ps-dot.ps-na{border-color:rgba(255,255,255,0.14)}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.64rem;font-weight:700}
+  .pill.rain{background:var(--ecmwf-soft);color:var(--ecmwf)}
+  .pill.dry{background:var(--met-soft);color:var(--met)}
+  .hit{color:var(--win);font-weight:700}.miss{color:var(--danger);font-weight:700}
+  .maturity{font-size:.72rem;color:var(--ink-mid);margin-top:9px}
+  .bar{height:6px;background:var(--panel3);border-radius:4px;overflow:hidden;margin-top:5px}
+  .bar>span{display:block;height:100%;background:var(--accent)}
+  .status{font-size:.76rem;padding:10px 13px;border-radius:11px;margin-bottom:11px;display:none;font-weight:500}
+  .status.show{display:block}
+  .status.err{background:var(--danger-soft);color:#a82f2f;border:1px solid #eab3b3}
+  .status.ok{background:var(--ok-soft);color:var(--accent-dark);border:1px solid #a9ddd2}
+  .status.warn{background:var(--warn-soft);color:#8a6314;border:1px solid #e9cf94}
+  .legend{font-size:.72rem;color:var(--ink-mid);line-height:1.7;margin-top:9px}
+  details{margin-top:9px}summary{cursor:pointer;font-size:.78rem;color:var(--accent);font-weight:600}
+  .foot{text-align:center;color:var(--ink-dim);font-size:.68rem;margin-top:16px;line-height:1.6;white-space:pre-line}
+  .empty{text-align:center;color:var(--ink-dim);padding:22px 10px;font-size:.84rem}
+  /* MET switch modal */
+  .modal-back{position:fixed;inset:0;background:rgba(20,35,43,.5);z-index:60;display:flex;
+    align-items:flex-end;justify-content:center;padding:0}
+  .modal{background:var(--panel);width:100%;max-width:520px;border-radius:18px 18px 0 0;
+    padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:82vh;overflow-y:auto;
+    box-shadow:var(--shadow-lg)}
+  .modal-hd{display:flex;align-items:center;justify-content:space-between;font-weight:700;
+    font-size:1rem;color:var(--ink);margin-bottom:4px}
+  .modal-x{font-size:1.1rem;color:var(--ink-dim);cursor:pointer;padding:2px 6px}
+  .modal-sub{font-size:.78rem;color:var(--ink-mid);margin-bottom:12px}
+  .met-near-label{font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;
+    letter-spacing:.5px;margin:12px 0 6px}
+  .met-options{display:flex;flex-direction:column;gap:6px}
+  .met-opt{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;
+    border:1px solid var(--line);border-radius:11px;cursor:pointer;background:var(--panel2);font-size:.86rem}
+  .met-opt:active{background:var(--panel3)}
+  .met-opt.current{border-color:var(--accent);background:var(--accent-soft)}
+  .met-opt .mo-name{color:var(--ink);font-weight:500}
+  .met-opt .mo-km{font-family:var(--mono);font-size:.74rem;color:var(--ink-dim)}
+  .met-opt.current .mo-km{color:var(--accent-dark)}
+  .met-src{font-size:.68rem;color:var(--ink-dim);margin-top:10px;text-align:center}
+  .lang-switch{display:flex;gap:0;background:var(--panel2);border:1px solid var(--line);
+    border-radius:11px;padding:3px;margin-top:4px}
+  .lang-switch button{flex:1;background:transparent;border:none;color:var(--ink-mid);
+    padding:9px;border-radius:9px;font-size:.86rem;font-weight:600;cursor:pointer;font-family:inherit}
+  .lang-switch button.on{background:var(--accent);color:#fff}
+  .board-loc{font-size:.9rem;color:var(--ink-mid);font-weight:600;margin:0 0 12px;line-height:1.4}
+  .met-match{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:var(--met-soft);border:1px solid var(--met-line);border-radius:11px;
+    padding:10px 13px;margin-bottom:12px;cursor:pointer;font-size:.8rem}
+  .met-match .mm-left{color:var(--ink-mid);min-width:0}
+  .met-match .mm-town{color:var(--met);font-weight:700}
+  .met-match .mm-km{font-family:var(--mono);font-size:.74rem;color:var(--ink-dim)}
+  .met-match .mm-switch{color:var(--accent);font-weight:600;font-size:.76rem;flex-shrink:0}
+  .met-match.far{background:var(--warn-soft);border-color:#e9cf94}
+  .met-match.far .mm-town{color:var(--warn)}
+  .worker-status{font-size:.76rem;margin-top:10px;padding:10px 12px;border-radius:10px;display:none;line-height:1.5}
+  .worker-status.show{display:block}
+  .worker-status.ok{background:var(--ok-soft);color:var(--accent-dark);border:1px solid #a9ddd2}
+  .worker-status.warn{background:var(--warn-soft);color:#8a6314;border:1px solid #e9cf94}
+  .worker-status.err{background:var(--danger-soft);color:#a82f2f;border:1px solid #eab3b3}
+  .worker-status b{font-weight:700}
+  .worker-status .ws-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .ws-dot.g{background:var(--accent)}.ws-dot.a{background:var(--warn)}.ws-dot.r{background:var(--danger)}
+  /* cross-farm ranking */
+  .rank-summary{display:flex;gap:10px;margin-bottom:12px}
+  .rank-summary .rs-box{flex:1;text-align:center;padding:11px;border-radius:11px;border:1px solid var(--line)}
+  .rank-summary .rs-box.met{background:var(--met-soft);border-color:var(--met-line)}
+  .rank-summary .rs-box.ecmwf{background:var(--ecmwf-soft);border-color:var(--ecmwf-line)}
+  .rank-summary .rs-box.tie{background:var(--panel2)}
+  .rank-summary .rs-n{font-family:var(--mono);font-size:1.5rem;font-weight:700;color:var(--ink)}
+  .rank-summary .rs-lab{font-size:.64rem;color:var(--ink-mid);font-weight:600;margin-top:2px}
+  .rank-summary .rs-box.met .rs-lab{color:var(--met)}
+  .rank-summary .rs-box.ecmwf .rs-lab{color:var(--ecmwf)}
+  .rank-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:6px;background:var(--panel2)}
+  .rank-row .rr-name{flex:1;min-width:0;font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+  .rank-row .rr-scores{font-family:var(--mono);font-size:.76rem;color:var(--ink-mid);flex-shrink:0}
+  .rank-row .rr-win{font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;flex-shrink:0}
+  .rr-win.met{background:var(--met-soft);color:var(--met)}
+  .rr-win.ecmwf{background:var(--ecmwf-soft);color:var(--ecmwf)}
+  .rr-win.tie{background:var(--panel3);color:var(--ink-dim)}
+  .rank-group-label{font-size:.72rem;font-weight:700;color:var(--ink-dim);text-transform:uppercase;
+    letter-spacing:.5px;margin:14px 0 8px}
+  #rankCard.open .master-chev,#rank-card.open .master-chev{transform:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="hdr-row">
+    <div class="brand">
+      <h1 id="t-title">天气模型争霸战</h1>
+      <div class="sub" id="t-sub">MET Malaysia 🆚 ECMWF</div>
+    </div>
+    <div class="hdr-btns">
+      <button class="ic" id="btnSettings" title="settings" onclick="openSettings()" aria-label="settings">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
+      <button class="ic" id="btnOpenAdd" title="add" onclick="toggleAddCard()">＋</button>
+    </div>
+  </div>
+</header>
+<main>
+  <div id="status" class="status"></div>
+  <div id="toast" class="toast"></div>
+  <div id="drivePrompt" class="drive-prompt"></div>
+
+  <!-- MET location switcher modal -->
+  <div id="metModal" class="modal-back" style="display:none" onclick="if(event.target===this)closeMetSwitch()">
+    <div class="modal">
+      <div class="modal-hd">
+        <span id="t-metswitch">选择 MET 对比地点</span>
+        <span class="modal-x" onclick="closeMetSwitch()">✕</span>
+      </div>
+      <div class="modal-sub" id="metModalFarm"></div>
+      <input type="text" id="metSearch" oninput="renderMetOptions()" placeholder="搜索 MET 地点…" aria-label="搜索 MET 地点 / Search MET location">
+      <div id="metNearLabel" class="met-near-label"></div>
+      <div id="metOptions" class="met-options"></div>
+    </div>
+  </div>
+
+  <!-- SHARE PREVIEW modal -->
+  <div id="sharePrevOv" class="modal-back" style="display:none" onclick="if(event.target===this)closeSharePreview()">
+    <div class="modal">
+      <div class="modal-hd">
+        <span id="t-share-title">预览 · WhatsApp 讯息</span>
+        <span class="modal-x" onclick="closeSharePreview()">✕</span>
+      </div>
+      <div id="sharePrevBody" class="share-preview"></div>
+      <div class="share-actions">
+        <button class="btn ghost" onclick="closeSharePreview()"><span id="t-share-cancel">取消</span></button>
+        <button class="btn btn-wa" onclick="sendSharePreview()"><svg class="wa-ico" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg><span id="t-share-send">发送</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS modal (cog) -->
+  <div id="settingsModal" class="modal-back" style="display:none" onclick="if(event.target===this)closeSettings()">
+    <div class="modal">
+      <div class="modal-hd">
+        <span id="t-settings">设置</span>
+        <span class="modal-x" onclick="closeSettings()">✕</span>
+      </div>
+      <label class="fld" id="t-langlabel">语言 / Language</label>
+      <div class="lang-switch">
+        <button id="langZh" onclick="setLangDirect('zh')">中文</button>
+        <button id="langEn" onclick="setLangDirect('en')">English</button>
+      </div>
+      <div id="workerStatus" class="worker-status show" style="margin-top:16px"></div>
+      <button class="btn ghost" onclick="checkWorker()" style="margin-top:10px"><span id="t-proxycheck">检查连线</span></button>
+
+      <label class="fld" id="t-autolog" for="autoLog" style="margin-top:16px">每日自动记录（开启应用时）</label>
+      <select id="autoLog" onchange="saveAutoLog()"></select>
+      <button class="btn ghost" onclick="driveAllNow()" style="margin-top:8px"><span id="t-drivenow">立即记录全部（驾驶模式）</span></button>
+
+      <label class="fld" id="t-challenger" for="challenger" style="margin-top:16px">对手模型（MET 对决谁）</label>
+      <select id="challenger" onchange="saveChallenger()"></select>
+
+      <label class="fld" id="t-thresh" for="thresh" style="margin-top:16px">降雨门槛 (mm/日)</label>
+      <input type="number" id="thresh" value="2.5" min="0.1" step="0.1" onchange="saveThresh()">
+      <details class="thresh-help">
+        <summary id="t-thresh-help-sum">怎样才算「下雨」？</summary>
+        <div class="thresh-help-body" id="threshHelpBody"></div>
+      </details>
+
+      <div class="app-link">
+        <div class="app-qr">
+          <svg viewBox="0 0 37 37" shape-rendering="crispEdges" class="qr-svg" role="img" aria-label="QR"><path d="M2 2h7v1h-7zM10 2h3v1h-3zM14 2h1v1h-1zM18 2h1v1h-1zM20 2h4v1h-4zM25 2h1v1h-1zM28 2h7v1h-7zM2 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM13 3h1v1h-1zM16 3h1v1h-1zM18 3h2v1h-2zM24 3h2v1h-2zM28 3h1v1h-1zM34 3h1v1h-1zM2 4h1v1h-1zM4 4h3v1h-3zM8 4h1v1h-1zM11 4h1v1h-1zM15 4h3v1h-3zM20 4h3v1h-3zM26 4h1v1h-1zM28 4h1v1h-1zM30 4h3v1h-3zM34 4h1v1h-1zM2 5h1v1h-1zM4 5h3v1h-3zM8 5h1v1h-1zM10 5h5v1h-5zM17 5h1v1h-1zM20 5h1v1h-1zM24 5h2v1h-2zM28 5h1v1h-1zM30 5h3v1h-3zM34 5h1v1h-1zM2 6h1v1h-1zM4 6h3v1h-3zM8 6h1v1h-1zM11 6h2v1h-2zM14 6h2v1h-2zM18 6h3v1h-3zM26 6h1v1h-1zM28 6h1v1h-1zM30 6h3v1h-3zM34 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM11 7h3v1h-3zM15 7h1v1h-1zM17 7h2v1h-2zM20 7h1v1h-1zM28 7h1v1h-1zM34 7h1v1h-1zM2 8h7v1h-7zM10 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM22 8h1v1h-1zM24 8h1v1h-1zM26 8h1v1h-1zM28 8h7v1h-7zM10 9h1v1h-1zM14 9h1v1h-1zM17 9h5v1h-5zM24 9h3v1h-3zM2 10h1v1h-1zM4 10h2v1h-2zM7 10h3v1h-3zM11 10h4v1h-4zM16 10h5v1h-5zM23 10h1v1h-1zM28 10h1v1h-1zM31 10h1v1h-1zM33 10h2v1h-2zM3 11h2v1h-2zM10 11h1v1h-1zM14 11h3v1h-3zM18 11h8v1h-8zM28 11h2v1h-2zM31 11h2v1h-2zM34 11h1v1h-1zM2 12h1v1h-1zM5 12h1v1h-1zM8 12h1v1h-1zM13 12h3v1h-3zM20 12h1v1h-1zM24 12h2v1h-2zM27 12h1v1h-1zM29 12h3v1h-3zM33 12h2v1h-2zM3 13h1v1h-1zM5 13h3v1h-3zM9 13h6v1h-6zM17 13h1v1h-1zM19 13h1v1h-1zM22 13h1v1h-1zM25 13h2v1h-2zM29 13h1v1h-1zM31 13h1v1h-1zM5 14h1v1h-1zM7 14h2v1h-2zM11 14h1v1h-1zM14 14h1v1h-1zM16 14h1v1h-1zM18 14h1v1h-1zM24 14h4v1h-4zM29 14h3v1h-3zM33 14h1v1h-1zM2 15h2v1h-2zM5 15h1v1h-1zM9 15h4v1h-4zM15 15h2v1h-2zM22 15h2v1h-2zM26 15h1v1h-1zM29 15h1v1h-1zM31 15h1v1h-1zM33 15h1v1h-1zM2 16h2v1h-2zM6 16h4v1h-4zM12 16h3v1h-3zM20 16h3v1h-3zM24 16h1v1h-1zM28 16h2v1h-2zM32 16h1v1h-1zM4 17h1v1h-1zM7 17h1v1h-1zM10 17h2v1h-2zM17 17h1v1h-1zM20 17h5v1h-5zM27 17h2v1h-2zM30 17h1v1h-1zM32 17h1v1h-1zM2 18h2v1h-2zM5 18h1v1h-1zM7 18h5v1h-5zM15 18h2v1h-2zM20 18h2v1h-2zM23 18h2v1h-2zM27 18h2v1h-2zM30 18h3v1h-3zM3 19h1v1h-1zM7 19h1v1h-1zM9 19h4v1h-4zM14 19h1v1h-1zM17 19h2v1h-2zM22 19h2v1h-2zM25 19h2v1h-2zM28 19h1v1h-1zM30 19h2v1h-2zM34 19h1v1h-1zM3 20h1v1h-1zM7 20h3v1h-3zM11 20h1v1h-1zM13 20h1v1h-1zM15 20h1v1h-1zM17 20h2v1h-2zM20 20h1v1h-1zM22 20h3v1h-3zM27 20h4v1h-4zM32 20h2v1h-2zM2 21h1v1h-1zM7 21h1v1h-1zM11 21h1v1h-1zM15 21h8v1h-8zM25 21h1v1h-1zM27 21h1v1h-1zM30 21h1v1h-1zM34 21h1v1h-1zM3 22h1v1h-1zM5 22h2v1h-2zM8 22h1v1h-1zM10 22h1v1h-1zM16 22h1v1h-1zM18 22h1v1h-1zM21 22h1v1h-1zM23 22h1v1h-1zM31 22h4v1h-4zM2 23h5v1h-5zM9 23h1v1h-1zM14 23h5v1h-5zM21 23h1v1h-1zM23 23h1v1h-1zM25 23h1v1h-1zM28 23h2v1h-2zM31 23h1v1h-1zM34 23h1v1h-1zM4 24h2v1h-2zM7 24h2v1h-2zM11 24h5v1h-5zM17 24h1v1h-1zM19 24h2v1h-2zM22 24h5v1h-5zM28 24h7v1h-7zM3 25h3v1h-3zM7 25h1v1h-1zM10 25h1v1h-1zM12 25h1v1h-1zM14 25h4v1h-4zM20 25h1v1h-1zM26 25h1v1h-1zM28 25h2v1h-2zM31 25h1v1h-1zM34 25h1v1h-1zM2 26h1v1h-1zM4 26h1v1h-1zM6 26h1v1h-1zM8 26h3v1h-3zM12 26h1v1h-1zM15 26h2v1h-2zM19 26h1v1h-1zM22 26h1v1h-1zM24 26h1v1h-1zM26 26h5v1h-5zM10 27h1v1h-1zM15 27h4v1h-4zM21 27h1v1h-1zM23 27h1v1h-1zM25 27h2v1h-2zM30 27h2v1h-2zM2 28h7v1h-7zM10 28h2v1h-2zM13 28h4v1h-4zM18 28h5v1h-5zM25 28h2v1h-2zM28 28h1v1h-1zM30 28h1v1h-1zM2 29h1v1h-1zM8 29h1v1h-1zM10 29h2v1h-2zM13 29h1v1h-1zM16 29h1v1h-1zM18 29h6v1h-6zM25 29h2v1h-2zM30 29h3v1h-3zM2 30h1v1h-1zM4 30h3v1h-3zM8 30h1v1h-1zM11 30h1v1h-1zM14 30h17v1h-17zM32 30h3v1h-3zM2 31h1v1h-1zM4 31h3v1h-3zM8 31h1v1h-1zM10 31h2v1h-2zM14 31h1v1h-1zM16 31h1v1h-1zM18 31h2v1h-2zM22 31h3v1h-3zM29 31h1v1h-1zM32 31h1v1h-1zM34 31h1v1h-1zM2 32h1v1h-1zM4 32h3v1h-3zM8 32h1v1h-1zM10 32h1v1h-1zM12 32h2v1h-2zM15 32h5v1h-5zM22 32h1v1h-1zM24 32h6v1h-6zM31 32h2v1h-2zM2 33h1v1h-1zM8 33h1v1h-1zM11 33h1v1h-1zM15 33h1v1h-1zM19 33h2v1h-2zM22 33h1v1h-1zM24 33h7v1h-7zM34 33h1v1h-1zM2 34h7v1h-7zM10 34h1v1h-1zM12 34h3v1h-3zM18 34h4v1h-4zM23 34h1v1h-1zM25 34h1v1h-1zM27 34h1v1h-1zM30 34h1v1h-1zM32 34h1v1h-1z"/></svg>
+        </div>
+        <a class="app-url" href="https://stanleywoosweeleong.github.io/modelduellab/" target="_blank" rel="noopener">https://stanleywoosweeleong.github.io/modelduellab/</a>
+      </div>
+      <div class="foot" id="foot" style="margin-top:18px;text-align:left"></div>
+      <div style="height:28px"></div>
+    </div>
+  </div>
+
+  <!-- ADD / EDIT LOCATION (shown only when + tapped) -->
+  <div class="card" id="addCard" style="display:none">
+    <h2>➕ <span id="t-sec-add">新增地点</span></h2>
+    <div id="editingTag" class="editing-tag" style="display:none"></div>
+    <label class="fld" id="t-inname" for="inName">地点名称</label>
+    <input type="text" id="inName" placeholder="例：我的果园 My Orchard">
+    <div class="row">
+      <div><label class="fld" for="inLat">Lat</label><input type="number" id="inLat" step="0.0001" placeholder="3.2480"></div>
+      <div><label class="fld" for="inLon">Lon</label><input type="number" id="inLon" step="0.0001" placeholder="102.4170"></div>
+    </div>
+    <button class="gps-btn" onclick="useGps()">📡 <span id="t-gps">使用当前位置</span></button>
+    <button class="btn" id="btnAdd"><span id="t-save">保存地点</span></button>
+    <button class="btn ghost" id="btnCancelEdit" style="display:none" onclick="cancelEdit()"><span id="t-cancel">取消</span></button>
+  </div>
+
+  <!-- LOCATION PICKER (below) -->
+  <div class="card" id="locCard">
+    <h2 class="master-hd" onclick="toggleLocCard()">
+      <span>📍 <span id="t-locs">选择地点</span></span>
+      <span class="master-right"><span class="master-hint" id="locActiveHint"></span> <span class="chev master-chev" id="locChev">▶</span></span>
+    </h2>
+    <div id="locBody" style="display:none">
+      <div class="filter-wrap">
+        <input type="text" id="filter" oninput="renderLocList()" placeholder="搜索地点…" aria-label="搜索地点 / Search location">
+      </div>
+      <div id="locList"></div>
+      <div id="binMount"></div>
+    </div>
+  </div>
+
+  <!-- DUEL CONTROLS -->
+  <div class="intro-note" id="introNote" style="display:none">
+    <div class="intro-head" onclick="toggleIntro()">
+      <span><span class="intro-ico">ℹ️</span> <span id="t-intro-title">这是一个长期实验</span></span>
+      <span class="intro-chev" id="introChev">▼</span>
+    </div>
+    <div class="intro-body" id="t-intro-body"></div>
+  </div>
+
+  <div class="card">
+    <h2>📝 <span id="t-setup">每日记录</span></h2>
+    <button class="btn" id="logBtn" onclick="logToday()"><span id="t-logtoday">记录今日预报</span></button>
+    <button class="btn ghost" onclick="runDuel()"><span id="t-run">重新评分</span></button>
+    <div class="maturity" id="maturity"></div>
+  </div>
+
+  <!-- SCOREBOARD -->
+  <div class="card" id="board-card" style="display:none">
+    <h2 style="margin-bottom:4px">🏆 <span id="t-board">记分板</span></h2>
+    <div id="board-loc" class="board-loc"></div>
+    <div class="met-match" id="metMatch" onclick="switchActiveMet()"></div>
+    <div class="scoreboard">
+      <div class="team met">
+        <span class="crown" id="crown-met" style="display:none">👑</span>
+        <div class="name">MET MALAYSIA</div>
+        <div class="csi" id="met-csi">–</div><div class="csi-lab" id="met-csi-lab">CSI</div>
+        <div class="metrics"><div><span class="mlab" id="met-pod-lab">POD</span><b id="met-pod">–</b></div><div><span class="mlab" id="met-far-lab">FAR</span><b id="met-far">–</b></div></div>
+      </div>
+      <div class="team ecmwf">
+        <span class="crown" id="crown-ecmwf" style="display:none">👑</span>
+        <div class="name" id="ecmwf-name">ECMWF</div>
+        <div class="csi" id="ecmwf-csi">–</div><div class="csi-lab" id="ecmwf-csi-lab">CSI</div>
+        <div class="metrics"><div><span class="mlab" id="ecmwf-pod-lab">POD</span><b id="ecmwf-pod">–</b></div><div><span class="mlab" id="ecmwf-far-lab">FAR</span><b id="ecmwf-far">–</b></div></div>
+      </div>
+    </div>
+    <div class="verdict" id="verdict"></div>
+    <div class="amount-row" id="amountRow"></div>
+    <div class="period-grid" id="periodGrid"></div>
+    <button class="btn share-btn" id="shareBtn" onclick="shareScorecard()">
+      <svg class="wa-ico" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
+      <span id="t-share">分享到 WhatsApp</span></button>
+    <details><summary id="t-explain">指标说明</summary><div class="legend" id="explain-body"></div></details>
+  </div>
+
+  <!-- LOG -->
+  <div class="card" id="log-card" style="display:none">
+    <h2 class="master-hd" onclick="toggleLogCard()">
+      <span>📊 <span id="t-log">逐日对照</span></span>
+      <span class="master-right"><span class="master-hint" id="logHint"></span> <span class="chev master-chev" id="logChev">▼</span></span>
+    </h2>
+    <div id="log-body"></div>
+    <button class="btn ghost export-btn" id="exportBtn" onclick="exportFarmXLS()">
+      <span id="t-export">📥 导出 Excel（本农场原始数据）</span></button>
+  </div>
+
+  <!-- CROSS-FARM RANKING -->
+  <div class="card" id="rank-card">
+    <h2 class="master-hd" onclick="toggleRankCard()">
+      <span>📈 <span id="t-rank">跨农场排名</span></span>
+      <span class="master-right"><span class="master-hint" id="rankHint"></span> <span class="chev master-chev" id="rankChev">▶</span></span>
+    </h2>
+    <div id="rankBody" style="display:none">
+      <div class="rank-summary" id="rankSummary"></div>
+      <div id="rankList"></div>
+    </div>
+  </div>
+</main>
+<script>
+/* ===================== ModelDuel Lab =====================
+   Three-way verification: MET Malaysia (categorical) and ECMWF
+   (numeric, via Open-Meteo) both scored against ERA5 actuals.
+   Location model mirrors RainScore Lab: seed-once WeatherNext
+   family + custom + GPS, all in one state.locations array.
+   Single-file, offline-first, bilingual (ZH default). No fabrication.
+=========================================================== */
+const CACHE_VERSION = 'modelduel-20260706-02';
+const STORE_KEY = 'modelduel-v1-state';
+const NS = 'modelduel';
+
+/* ---- MET Malaysia forecast towns (data.gov.my location_name values).
+   A farm coordinate maps to its NEAREST town by haversine. Extend freely. */
+const MET_TOWNS = [
+  {town:'Kuala Lumpur',      lat:3.139,  lon:101.687},
+  {town:'Petaling Jaya',     lat:3.107,  lon:101.606},
+  {town:'Raub',              lat:3.793,  lon:101.857},
+  {town:'Bentong',           lat:3.522,  lon:101.909},
+  {town:'Temerloh',          lat:3.449,  lon:102.418},
+  {town:'Kuantan',           lat:3.808,  lon:103.328},
+  {town:'Bera',              lat:3.132,  lon:102.475},
+  {town:'Jerantut',          lat:3.936,  lon:102.362},
+  {town:'Lipis',             lat:4.183,  lon:102.043},
+  {town:'Ipoh',              lat:4.597,  lon:101.090},
+  {town:'Tapah',             lat:4.198,  lon:101.260},
+  {town:'Tanjung Malim',     lat:3.684,  lon:101.520},
+  {town:'Cameron Highlands', lat:4.471,  lon:101.376},
+  {town:'Gua Musang',        lat:4.884,  lon:101.968},
+  {town:'Kuala Krai',        lat:5.531,  lon:102.199},
+  {town:'Seremban',          lat:2.725,  lon:101.938},
+  {town:'Kuala Pilah',       lat:2.737,  lon:102.249},
+  {town:'Segamat',           lat:2.510,  lon:102.815},
+  {town:'Kluang',            lat:2.031,  lon:103.318},
+  {town:'Melaka',            lat:2.196,  lon:102.250},
+  {town:'Keningau',          lat:5.339,  lon:116.161},
+  {town:'Kota Kinabalu',     lat:5.980,  lon:116.073},
+  {town:'Sibu',              lat:2.288,  lon:111.831},
+  {town:'Kuching',           lat:1.553,  lon:110.359},
+];
+
+function haversine(la1,lo1,la2,lo2){
+  const R=6371,d=x=>x*Math.PI/180;
+  const a=Math.sin(d(la2-la1)/2)**2+Math.cos(d(la1))*Math.cos(d(la2))*Math.sin(d(lo2-lo1)/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+function nearestTown(lat,lon){
+  let best=null,bd=1e9;
+  for(const t of MET_TOWNS){const dd=haversine(lat,lon,t.lat,t.lon);if(dd<bd){bd=dd;best=t;}}
+  return {town:best.town,km:Math.round(bd)};
+}
+
+/* MET categorical forecast (BM/EN) -> rain(1)/dry(0)/unknown(null) */
+function metCatToRain(txt){
+  if(!txt) return null;
+  const s=txt.toLowerCase();
+  const rain=['ribut petir','thunderstorm','hujan','rain','shower','renyai','storm'];
+  const dry =['tiada hujan','no rain','berjerebu','cerah','fair','sunny','clear','berawan','cloudy','tiada'];
+  for(const w of rain) if(s.includes(w)) return 1;
+  for(const w of dry)  if(s.includes(w)) return 0;
+  return null;
+}
+
+/* contingency -> POD / FAR / CSI (null-honest, RainScore convention) */
+function score(pairs){
+  let H=0,M=0,F=0,C=0;
+  for(const p of pairs){
+    if(p.fc==null||p.obs==null) continue;
+    if(p.fc===1&&p.obs===1)H++;else if(p.fc===0&&p.obs===1)M++;
+    else if(p.fc===1&&p.obs===0)F++;else C++;
+  }
+  return {H,M,F,C,
+    pod:(H+M)?H/(H+M):null, far:(H+F)?F/(H+F):null, csi:(H+M+F)?H/(H+M+F):null, n:H+M+F+C};
+}
+
+/* ===================== SEED FARMS (verified, from RainScore Lab) ===================== */
+const SEED_FARMS = [
+  ["Sg. Ruan - Fang Goo 双溪兰 - 晓方",3.77883,101.94133,"Raub 劳勿"],
+  ["Sg. Klau - Fang Goo 双溪吉流 - 晓方",3.71967,102.01033,"Raub 劳勿"],
+  ["Sg. Klau 1 - CT Tan 双溪吉流 1 - CT Tan",3.717,102.0055,"Raub 劳勿"],
+  ["Kg. Sg. Ruan - Neng 双溪兰 - 能",3.79361,101.93472,"Raub 劳勿"],
+  ["Kg. Sg. Ruan - Jerry Phoon 双溪兰新村 - Jerry",3.79194,101.94278,"Raub 劳勿"],
+  ["Sg. Klau - Kwong Seng 双溪吉流 - Kwong Seng",3.74833,101.95133,"Raub 劳勿"],
+  ["Sg. Klau 2 - CT Tan 双溪吉流 2 - CT Tan",3.74417,101.96917,"Raub 劳勿"],
+  ["Kg. Sg. Klau - Thompson 双溪吉流新村 - Thompso",3.7475,101.97694,"Raub 劳勿"],
+  ["Kg. Sg. Klau - Soon 双溪吉流新村 - 顺",3.78392,101.98063,"Raub 劳勿"],
+  ["Kampung Temau - Eric 甘榜德茂 - Eric",3.929,101.921,"Raub 劳勿"],
+  ["Ulu Gali 乌鲁加里",3.84478,101.95747,"Raub 劳勿"],
+  ["Kg. Gali 甘榜加里",3.83333,101.9,"Raub 劳勿"],
+  ["Jerkoh 日利谷",4.04861,101.92028,"Raub 劳勿"],
+  ["SJKC Cheroh 积罗国民型华文学校",3.90293,101.81499,"Raub 劳勿"],
+  ["Kampung Temau - MK 甘榜德茂 - MK",3.917778,101.919444,"Raub 劳勿"],
+  ["Dong - Hong 东区 - 鸿总",4.090556,101.966111,"Raub 劳勿"],
+  ["Ulu Gali - Jacky Kuan 乌鲁加里 - Jacky Kuan",3.834694,101.911833,"Raub 劳勿"],
+  ["Raub Batu Tiga - James Lye 劳勿三英里 - James",3.79275,101.903889,"Raub 劳勿"],
+  ["Ringlet 冷力",4.41453,101.38415,"Cameron 金马仑"],
+  ["Bertam Valley 伯坦谷",4.397,101.381,"Cameron 金马仑"],
+  ["Habu 哈布",4.44011,101.38921,"Cameron 金马仑"],
+  ["Tanah Rata 丹那拉打",4.47135,101.37565,"Cameron 金马仑"],
+  ["Brinchang 碧兰璋",4.49223,101.38732,"Cameron 金马仑"],
+  ["Kea Farm 吉亚农场",4.50436,101.40734,"Cameron 金马仑"],
+  ["Tringkap 丁甲",4.51494,101.42771,"Cameron 金马仑"],
+  ["Kampung Raja 甘榜拉惹",4.56709,101.40968,"Cameron 金马仑"],
+  ["Blue Valley 蓝谷",4.58322,101.41243,"Cameron 金马仑"],
+  ["Sungai Palas 双溪巴拉斯",4.5225,101.367,"Cameron 金马仑"],
+  ["Cameron Valley 金马伦谷",4.4305,101.401,"Cameron 金马仑"],
+  ["Boh Tea Plantation BOH 茶园",4.52,101.37,"Cameron 金马仑"],
+  ["Kuala Terla Tea Estate 吉拉烈茶园",4.548,101.42,"Cameron 金马仑"],
+  ["Kampung Taman Sedia 草莓农场",4.458,101.384,"Cameron 金马仑"],
+  ["MARDI Cameron Highlands MARDI 农业站",4.4619,101.3838,"Cameron 金马仑"],
+  ["Mantin Tmn Permai Jaya 文丁 中华华文小学",2.81778,101.8925,"NS9 森美兰"],
+  ["Mantin Andalas GIO GIO 文丁 湖滨花园",2.82639,101.88028,"NS9 森美兰"],
+  ["MANTIN DALAM 文丁达南",2.806111,101.8875,"NS9 森美兰"],
+  ["Spg. Durian (Kg. Mentaus) 1 新邦榴莲 Pitt-猫王",3.12,102.21972,"NS9 森美兰"],
+  ["Spg. Durian (Kg. Mentaus) 2 新邦榴莲 SAM",3.11778,102.21944,"NS9 森美兰"],
+  ["Titi 知知港",2.8167,102.0667,"NS9 森美兰"],
+  ["Labis - Austin 拉美士 - Austin",2.42806,103.03639,"Johor 柔佛"],
+  ["Segamat Buloh Kasap 昔加末 巫罗加什",2.527677,102.772178,"Johor 柔佛"],
+  ["Chaah Baru 三合港",2.148561,103.052319,"Johor 柔佛"],
+  ["Bekok 彼咯",2.305833,103.091389,"Johor 柔佛"],
+  ["Jementah 利民达",2.433331,102.683331,"Johor 柔佛"],
+  ["Tenang Hot Spring 丁能 热水池",2.481236,103.05805,"Johor 柔佛"],
+  ["Machap Baru 马接峇鲁",2.38,102.35056,"Melaka 马六甲"],
+  ["Durian Tunggal Dam 榴梿洞葛水坝",2.3537,102.3161,"Melaka 马六甲"],
+  ["Kg. Simpang Tebing Tinggi 德宾丁宜新村",3.87467,102.34467,"Jerantut 而连突"],
+  ["Damak 达玛",3.949544,102.214385,"Jerantut 而连突"],
+  ["Bukit Seladang 友联港神山",3.91313,102.35476,"Jerantut 而连突"],
+  ["Bentong Kuala Repas 文冬兵营",3.55181,101.8852,"Bentong 文冬"],
+  ["Bentong Happy Farm 农家乐",3.53333,101.88444,"Bentong 文冬"],
+  ["Bentong Valley Agro Park 文冬山寨谷小舍",3.67438,101.8655,"Bentong 文冬"],
+  ["Bentong Utara 文冬市北",3.52816,101.915014,"Bentong 文冬"],
+  ["Bentong Bukit D.O 文冬老虎山",3.530986,101.910808,"Bentong 文冬"],
+  ["Bentong Selatan 文冬市南",3.516833,101.897667,"Bentong 文冬"],
+  ["Waterway Villa 水道别墅",3.44917,101.90056,"Bentong 文冬"],
+  ["Kg. Benus 甘榜本努斯",3.50783,101.92667,"Bentong 文冬"],
+  ["Tras 都赖",3.73622,101.80792,"Bentong 文冬"],
+  ["Kampung Hulu Lebu 乌鲁乐布新村",3.57278,101.92611,"Bentong 文冬"],
+  ["Kampung Lebu 甘榜乐布",3.616,101.933,"Bentong 文冬"],
+  ["Sungai Ruan 双溪兰",3.8542814,101.9430543,"Bentong Team 团队"],
+  ["Bentong Kuala Repas 文冬兵营",3.55181,101.8852,"Bentong Team 团队"],
+  ["Bentong Happy Farm 农家乐",3.53333,101.88444,"Bentong Team 团队"],
+  ["Bentong Valley Agro Park 文冬山寨谷小舍",3.67438,101.8655,"Bentong Team 团队"],
+  ["Bentong Utara 文冬市北",3.52816,101.915014,"Bentong Team 团队"],
+  ["Bentong Bukit D.O 文冬老虎山",3.530986,101.910808,"Bentong Team 团队"],
+  ["Bentong Selatan 文冬市南",3.516833,101.897667,"Bentong Team 团队"],
+  ["Borneo Spring 婆罗青泉",3.492,102.024,"Karak 加叻"],
+  ["Kg. Sungai Dua 甘榜双溪都亚",3.45972,102.0,"Karak 加叻"],
+  ["Kg. Cinta Manis 甘甜新村",3.453,102.031,"Karak 加叻"],
+  ["Kg. Troh 德乐新村",3.41194,102.07889,"Karak 加叻"],
+  ["The Valley 加叻幽谷",3.38389,102.02778,"Karak 加叻"],
+  ["100% ORGANIC DURI RIN 山本绫有机农场",3.45227,101.99607,"Karak 加叻"],
+  ["Manchis 文积",3.205,102.164,"Manchis 文积"],
+  ["Kg. Ponson - Gan Ming Keong 彭顺村 - 颜明强",3.229722,102.156111,"Manchis 文积"],
+  ["Batu 36 三十六碑",3.240556,102.141111,"Manchis 文积"],
+  ["Chenderiang 积莪营",4.256043,101.227729,"Perak 霹雳"],
+  ["Sungkai 宋溪",3.978889,101.360278,"Perak 霹雳"],
+  ["Diamond Creeks 钻石溪",3.7755,101.52567,"Perak 霹雳"],
+  ["Tanjung Malim 丹绒马林",3.71778,101.55278,"Perak 霹雳"],
+  ["Kampung Belengu 甘榜柏伦古",3.436161,102.294602,"Pahang Central 彭亨中部"],
+  ["Kampung Ketam 甘榜吉胆",3.54,102.36778,"Pahang Central 彭亨中部"],
+  ["Kampung Gantok 甘榜甘督",3.505847,102.360318,"Pahang Central 彭亨中部"],
+  ["Jambu Rias BIGWOOD 占布里亚斯 大木",3.467919,102.094837,"Pahang Central 彭亨中部"],
+  ["Lojing 罗京高原",4.7443608,101.6416756,"Kelantan 吉兰丹"],
+  ["Kuala Krai 瓜拉吉赖",5.456499,102.3308,"Kelantan 吉兰丹"],
+  ["Gua Musang 话望生",4.884279,101.968178,"Kelantan 吉兰丹"],
+  ["Lubok Palaei 鲁柏巴莱",2.430879,111.947151,"Sabah/Sarawak 东马"],
+  ["Sibintek 西宾德",2.33837,112.08403,"Sabah/Sarawak 东马"],
+  ["Keningau 根地咬",5.35528,116.14472,"Sabah/Sarawak 东马"],
+  ["Kionsom 建山",5.99417,116.18222,"Sabah/Sarawak 东马"],
+  ["Mengkarak 明加叻",3.32,102.43,"Bera 百乐县"],
+  ["Kemasul 金马苏",3.297,102.395,"Bera 百乐县"],
+  ["Triang 直凉",3.248,102.417,"Bera 百乐县"],
+  ["Palm Glove 直凉园 金河山庄",3.2305389,102.3951267,"Bera 百乐县"],
+  ["Paya Lang 巴也郎",3.18194,102.43667,"Bera 百乐县"],
+  ["Simpang Bukit Mendi 明光",3.165721,102.386012,"Bera 百乐县"],
+  ["Bukit Mendi 武吉文迪",3.17474,102.350563,"Bera 百乐县"],
+  ["Kemayan Taman Maju Jaya 金马扬 1",3.124265,102.363199,"Bera 百乐县"],
+  ["Kemayan Taman Ixnora Jaya 金马扬 2",3.141841,102.363953,"Bera 百乐县"],
+  ["Sungai Rui 双溪锐",3.09639,102.35861,"Bera 百乐县"],
+  ["Lanchang (Durian) 联增",3.42925,102.13928,"Miketam 苏晓薇"],
+  ["Draha (Durian) 德拉哈",3.40339,102.283,"Miketam 苏晓薇"],
+  ["Jambu Rias 占布里亚斯",3.39956,102.14848,"Miketam 苏晓薇"],
+  ["Empresa 皇后园",3.36379,102.2608,"Miketam 苏晓薇"],
+  ["Mentakab 文德甲",3.37169,102.31093,"Miketam 苏晓薇"],
+  ["Mengkarak 明加叻",3.32936,102.31455,"Miketam 苏晓薇"],
+  ["Kuala Lipis 瓜拉立卑",4.124748,102.088034,"Miketam 苏晓薇"],
+  ["Kampung Chapu 甘榜查布",5.1775,102.895,"Desmond 陈联铕"],
+  ["Kuala Berang 瓜拉伯浪",5.1725,102.53333,"Desmond 陈联铕"],
+  ["Sungkai 宋溪",3.978889,101.360278,"Desmond 陈联铕"],
+  ["Tanjung Malim 丹绒马林",3.71778,101.55278,"Uncle Soon 順豪"],
+  ["Sungai Lembing 林明",3.85,103.03333,"Uncle Soon 順豪"],
+];
+const SEED_VERSION = 5;
+const REGION_RENAMES = { "Jerantut":"Jerantut 而连突", "Miketam":"Miketam 苏晓薇" };
+const DEFAULT_MET_PROXY = 'https://modelduel-met.standphoto.workers.dev';
+
+/* ===================== state ===================== */
+function load(){
+  try{const s=JSON.parse(localStorage.getItem(STORE_KEY));if(s&&s.locations){
+    if(!s.log) s.log={};            // per-farm forecast/actual history
+    if(!s.settings) s.settings={metProxy:DEFAULT_MET_PROXY,autoLog:'off'};
+    if(!s.settings.metProxy) s.settings.metProxy=DEFAULT_MET_PROXY;  // back-fill if never set
+    if(s.settings.autoLog==null) s.settings.autoLog='off';
+    return s;
+  }}catch(e){}
+  return {locations:[],seeded:false,seedVersion:0,lastResult:null,lang:'zh',
+          log:{},settings:{metProxy:DEFAULT_MET_PROXY,autoLog:'off'}};
+}
+function save(){localStorage.setItem(STORE_KEY,JSON.stringify(state));}
+let state=load();
+
+/* ---- forecast/actual LOG model (RainScore maturity pattern) ----
+   state.log[farmId] = { "YYYY-MM-DD": { met:0/1/null, ecmwf:0/1/null,
+                                         actual:0/1/null, ecmm:Number } }
+   MET & ECMWF are captured as *forecasts for that date* on the day we log.
+   ERA5 actual backfills ~5 days later. CSI is computed only over dates
+   where a forecast AND an actual both exist — so scores mature over weeks,
+   never fabricated from a retrospective MET call (MET has no past archive). */
+const ERA5_LAG_DAYS = 5;
+/* Challenger models MET Malaysia can duel against. All are physics-based global
+   models with clean archived precipitation in Open-Meteo (needed for scoring vs
+   ERA5). AI models (GraphCast, AIFS) are deliberately excluded — Open-Meteo
+   doesn't serve their precipitation reliably for backfill. */
+const CHALLENGERS=[
+  {key:'ecmwf_ifs',       name:'ECMWF',  full:'ECMWF IFS 9km',   country:'🇪🇺'},
+  {key:'icon_seamless',   name:'ICON',   full:'DWD ICON 11km',   country:'🇩🇪'},
+  {key:'gfs_seamless',    name:'GFS',    full:'NOAA GFS',        country:'🇺🇸'},
+  {key:'gem_seamless',    name:'GEM',    full:'ECCC GEM',        country:'🇨🇦'},
+  {key:'jma_seamless',    name:'JMA',    full:'JMA GSM',         country:'🇯🇵'},
+  {key:'cma_grapes_global',name:'CMA',   full:'CMA GRAPES',      country:'🇨🇳'},
+];
+const DEFAULT_CHALLENGER='ecmwf_ifs';
+function challengerKey(){
+  const k=state.settings&&state.settings.challenger;
+  return CHALLENGERS.some(c=>c.key===k)?k:DEFAULT_CHALLENGER;
+}
+function challengerInfo(){ return CHALLENGERS.find(c=>c.key===challengerKey())||CHALLENGERS[0]; }
+function logFor(farmId){ return (state.log[farmId] = state.log[farmId] || {}); }
+function todayYMD(){ return iso(new Date()); }
+function daysAgoYMD(n){ const d=new Date(); d.setDate(d.getDate()-n); return iso(d); }
+
+/* seed-once (deleting all farms won't re-seed) */
+if(!state.seeded && (!state.locations||state.locations.length===0)){
+  state.locations=SEED_FARMS.map(([name,lat,lon,region],i)=>({
+    id:"L"+Date.now().toString(36)+i.toString(36),name,lat,lon,region}));
+  state.seeded=true;state.seedVersion=SEED_VERSION;save();
+}
+/* migration for existing installs: rename regions, back-fill, add new (name+region) */
+if(state.seeded && state.locations && (state.seedVersion||0)<SEED_VERSION){
+  for(const loc of state.locations)
+    if(loc.region&&REGION_RENAMES[loc.region]) loc.region=REGION_RENAMES[loc.region];
+  for(const loc of state.locations){
+    if(loc.region) continue;
+    const hit=SEED_FARMS.find(([n,la,lo])=>Math.abs(la-(+loc.lat))<1e-4&&Math.abs(lo-(+loc.lon))<1e-4);
+    if(hit) loc.region=hit[3];
+  }
+  const have=new Set(state.locations.map(l=>`${l.name}@@${l.region||""}`));
+  SEED_FARMS.forEach(([name,lat,lon,region],i)=>{
+    if(!have.has(`${name}@@${region}`)){
+      state.locations.push({id:"Lm"+Date.now().toString(36)+i.toString(36),name,lat,lon,region});
+      have.add(`${name}@@${region}`);
+    }
+  });
+  state.seedVersion=SEED_VERSION;save();
+}
+
+let LANG=state.lang||'zh';
+// Restore the last-viewed farm so returning users (often multi-farm owners) land
+// back where they were. Blank only on first launch (nothing persisted yet).
+let activeLoc=(state.activeLoc && state.locations.some(l=>l.id===state.activeLoc && !l.deleted))
+  ? state.activeLoc : null;
+let editingId=null;
+let lastResult=state.lastResult||null;
+const $=s=>document.querySelector(s);
+const uid=()=>"U"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const iso=d=>d.toISOString().slice(0,10);
+
+/* ===================== i18n ===================== */
+const I18N={
+  zh:{title:'天气模型争霸战',sub:m=>`MET Malaysia 🆚 ${m}`,
+    challengerLabel:'对手模型（MET 对决谁）',challengerSaved:m=>`对手已设为 ${m}`,
+    locs:'选择地点',setup:'每日记录',from:'起始',to:'结束',thresh:'降雨门槛 (mm/日)',
+    threshHelpSum:'怎样才算「下雨」？',
+    threshSaved:v=>`降雨门槛已设为 ${v} mm/日`,
+    threshHelp:'气象上，一天的降雨量决定这天算不算「雨天」：<br>• <b>0.1–0.2 mm</b>：雨量筒能测到的最小值，以下记为「无雨」——只是仪器有反应，不是真正下雨。<br>• <b>1 mm</b>：气候统计常用的「湿日」门槛（WMO 干旱指数以 &lt;1mm 为干日）。偏低。<br>• <b>2.5 mm</b>：经典「雨天」定义（美国旧制、印度 IMD 至今沿用）。RainLog Lab 用的就是这个。<br>• 强度分级（每日）：&lt;1 无雨 · 1–5 微雨 · 5–10 小雨 · 10–30 中雨 · &gt;30 大雨。<br><br><b>⚠ 但「雨天」≠「危险」——看强度，不是看总量</b><br>本 App 用的是「每日总量 (mm/日)」，方便比较模型。但真正的水灾风险，MET Malaysia 是用「每小时强度 (mm/时)」来定义的：<br>• <b>雷暴警告</b>：预计雨强 <b>超过 20 mm/时</b>（有效 6 小时内）。<br>• <b>骤发水灾</b>：对流雨 <b>2–4 小时内超过 60 mm</b> 通常就会造成闪电水灾。<br>• <b>持续降雨警告</b>三级：Waspada 注意（黄）· Buruk 恶劣（橙）· Bahaya 危险（红）。<br>季候风雨常是绵延不断、夹带阵阵倾盆，24 小时偶尔可超过数百毫米。<br>所以：50 mm 平均落一整天 vs 50 mm 在一小时内倒下——总量相同，风险天差地别。想看强度与水灾预警，请用姊妹 App <b>FlashFlood Lab（闪电水灾）</b>。<br><br>门槛越高，只有「真正有意义的雨」才算数——对果园决策更贴切。你可依自己的作物需要设定。',
+    run:'开始对决',rescore:'重新评分',proxySave:'保存',board:'记分板',log:'逐日对照',explain:'指标说明',
+    inname:'地点名称',gps:'使用当前位置',save:'保存地点',search:'搜索地点…',
+    update:'更新地点',cancel:'取消',addNew:'＋ 新增地点',secAdd:'新增地点',secEdit:'编辑地点',secPick:'选择地点',editing:n=>`正在编辑：${n}`,updated:'已更新 ✓',
+    keptNear:m=>`已更新（移动 ${m} 米，记录保留）`,
+    date:'日期',met:'MET',ecmwf:'ECMWF',actual:'实测',rain:'有雨',dry:'无雨',
+    metTown:t=>`MET: ${t}`,gpsBadge:'GPS',customBadge:'自订',
+    metSwitch:'选择 MET 对比地点',metNearest:'最近的 MET 地点',
+    metSrcOfficial:'坐标来源：MET 官方',metSrcTable:'坐标来源：内置表（近似）',
+    metSwitched:n=>`已改用 MET：${n}`,metVs:'对比',metManual:'（手动）',
+    metFar:'距离较远，结果仅供参考',metChange:'更换',
+    rank:'跨农场排名',rankMetWins:'MET 胜',rankEcWins:'ECMWF 胜',rankTies:'打平',rankTie:'平',
+    rankHint:n=>`${n} 个农场已评分`,rankEmpty:'尚无已评分的农场 · 记录几天后再看',
+    rankPending:n=>`${n} 个农场待实测回填`,
+    selectFirst:'请先选择一个地点',tapToSelect:'点击选择果园 ▾',
+    verdictWin:(w,a,b)=>`<b>${w}</b> 本轮胜出 · 综合 ${a} vs ${b}`,
+    verdictTie:'本轮打平 · 综合相同',verdictPending:'🏆 累积足够实测后，这里显示谁胜出',
+    share:'分享到 WhatsApp',sharePrevTitle:'预览 · WhatsApp 讯息',shareCancel:'取消',shareSend:'发送',
+    shTitle:'🏆 天气模型争霸战 · 记分板',
+    shTie:'本轮打平 · 综合相同',
+    shWin:(w,a,b)=>`✅ ${w} 胜出 · 综合 ${a} vs ${b}`,
+    shPending:'⏳ 尚未累积足够实测数据',
+    shScores:'评分（越高越好，空报越低越好）：',
+    shAmount:(m,mae,n)=>`🌧 ${m} 雨量平均偏差 ${mae} mm/日（${n} 天）· MET 无雨量数据`,
+    shDays:n=>`📊 已评分 ${n} 天（对比 ERA5 实测）`,
+    shNoData:'📊 数据累积中，实测约 5 天后回填',
+    shFoot:'— ModelDuel Lab · 数据 Open-Meteo/MET Malaysia',
+    export:'📥 导出 Excel（本农场原始数据）',
+    exportDone:n=>`已导出 ${n} 天数据（.xlsx）`,
+    exportEmpty:'本农场暂无记录可导出',
+    amountLine:(mae,n,m)=>`🌧 雨量准度：${m} 平均偏差 <b>${mae} mm/日</b>（对比 ERA5 实测，${n} 天）· MET 无雨量数据`,
+    periodTitle:'时段准度 · 综合（越高越好）',pMorning:'早',pAfternoon:'午',pNight:'夜',
+    labCSI:'综合',labPOD:'命中率',labFAR:'空报率',
+    periodFoot:'早 6-12 · 午 12-18 · 夜 18-24 时 · 对比 ERA5 实测',
+    explainBody:'命中率（POD）：实际有雨、被成功预报到的比例，越高越好。'+
+      '空报率（FAR）：预报有雨、实际却没下的比例，越低越好。'+
+      '综合（CSI）：把命中、漏报、空报合起来的总分＝命中÷(命中+漏报+空报)，0–1，越高越好，最能代表整体表现。'+
+      '两个模型都以 ERA5 实测雨量为真值来评分，不是彼此互相比较。',
+    matLive:n=>`已比对 ${n} 天真实数据`,
+    matThin:'样本偏少，评分仅供参考（建议 ≥14 天）',
+    matScored:n=>`已评分 ${n} 天（有实测）`,matPending:n=>`${n} 天待实测回填`,logRows:n=>`${n} 天记录`,
+    metPeriodLegend:'日期下方 🌅早 ☀️午 🌙夜＝MET 分时段预报：实心＝该时段预报有雨，淡色＝无雨，虚线＝无资料。（MET 独有的分时段数据）',
+    matEmpty:'尚无可评分数据 · 每天记录，5 天后 ERA5 实测回填',
+    introTitle:'这是一个长期实验',
+    introBody:'每天打开 App 记录一次预报。实测雨量（ERA5）约 <b>5 天后</b>才回填，所以最快第 5-6 天才会出现第一个分数。<br>约 <b>2 周</b>后（≥14 天）分数开始有参考价值，<b>3 周</b>后（约 20 天）才够可信。请每天坚持记录 🌱',
+    logToday:'记录今日预报',logging:'记录中…',
+    loggedOk:t=>`已记录 · MET: ${t}`,loggedNoMet:'已记录 ECMWF（MET 无数据/未设代理）',
+    noProxy:'未设 MET 代理网址，仅记录 ECMWF。见设置。',
+    setProxy:'MET 代理网址 (Cloudflare Worker)',proxySaved:'已保存代理网址',
+    proxyCheck:'检查连线',advanced:'高级设置',langLabel:'语言 / Language',
+    wsChecking:'检查中…',wsNoUrl:'请先填写代理网址',
+    wsOnline:'Worker 在线',wsOffline:'无法连线到 Worker',
+    wsSrcMet:'坐标来源：MET 官方 ✓',wsSrcTable:'坐标来源：内置表（近似）',
+    wsSrcUnknown:'坐标来源未知',wsCount:n=>`可对比 ${n} 个 MET 地点`,
+    wsHint:'请检查网址是否正确、Worker 是否已部署。',
+    autoLogLabel:'每日自动记录（开启应用时）',
+    autoRunning:(d,n)=>`驾驶模式记录中… ${d}/${n}`,autoDone:n=>`已记录 ${n} 个地点 ✓`,
+    autoStopped:(d,n)=>`已暂停（${d}/${n} · 再按继续）`,
+    alOff:'关闭 / Off',alActive:'仅当前地点 / Active farm',alRegion:r=>`${r}（整区）`,alAll:'全部地点 / All farms',
+    driveNow:'立即记录全部（驾驶模式）',
+    updateRegion:'更新此区所有地点',regionDone:n=>`已更新 ${n} 个地点 ✓`,
+    regionDoneFailed:(ok,n,names)=>{const shown=names.slice(0,4).join('、');const extra=names.length>4?` 等 ${names.length} 个`:'';return `已更新 ${ok}/${n} · 失败：${shown}${extra}（可重试）`;},
+    drivePromptMsg:(scope,n)=>`每日自动记录已开启（${scope}）。现在用驾驶模式记录 ${n} 个地点？过程会保持屏幕常亮，请让应用停留在前台。`,
+    drivePromptGo:'开始记录',drivePromptSkip:'今天跳过',drivePromptOff:'关闭自动记录',
+    autoOffNow:'已关闭每日自动记录',autoBatchSet:'已设定 · 下次开启应用时会先询问再开始驾驶模式记录',
+    settings:'设置',
+    errNet:'无法取得资料。请检查网络后重试。',
+    errMet:'MET Malaysia 无回应或需权杖。此地点缺 MET 数据。',
+    errRange:'请选择有效日期区间。',running:'对决进行中…',
+    gpsErr:'无法取得定位',gpsOk:'已带入坐标',needName:'请填名称与坐标',
+    softDeleted:'已删除',undo:'撤销',restored:'已恢复 ✓',
+    restore:'恢复',bin:n=>`回收站（${n}）`,purge:'永久清空回收站',
+    confirmPurge:'永久删除回收站内所有地点及其记录？此操作无法撤销。',purged:'回收站已清空',
+    foot:'MET 分类预报（有雨/无雨）与对手模型数值降雨 (mm) 统一折算为二元判定，以 ERA5 实测为真值评分。'+
+      '农场坐标自动对应最近 MET 城镇。离线可用 · 数据不外传 · v1.0.0\n\n'+
+      '数据来源与鸣谢：\n'+
+      '· 预报：马来西亚气象局 MET Malaysia（data.gov.my）\n'+
+      '· 对手模型：ECMWF（欧洲）· DWD ICON（德国）· NOAA GFS（美国）· ECCC GEM（加拿大）· JMA（日本）· CMA（中国）\n'+
+      '· 真值：ECMWF ERA5 再分析\n'+
+      '· 模型与 ERA5 数据经由 Open-Meteo 提供（CC-BY 4.0）\n'+
+      '· 由 Claude Opus 4.8（Anthropic）协助开发'},
+  en:{title:'ModelDuel Lab',sub:m=>`MET Malaysia 🆚 ${m}`,
+    challengerLabel:'Challenger model (who MET duels)',challengerSaved:m=>`Challenger set to ${m}`,
+    locs:'Pick location',setup:'Daily log',from:'From',to:'To',thresh:'Rain threshold (mm/day)',
+    threshHelpSum:'What counts as "rain"?',
+    threshSaved:v=>`Rain threshold set to ${v} mm/day`,
+    threshHelp:'Meteorologically, a day\'s rainfall decides whether it counts as a "rainy day":<br>• <b>0.1–0.2 mm</b>: the gauge\'s detection limit; below this is recorded as zero — the bucket tipped, but it isn\'t real rain.<br>• <b>1 mm</b>: the common "wet day" threshold in climate stats (WMO dry-spell index uses &lt;1mm for a dry day). On the low side.<br>• <b>2.5 mm</b>: the classic "rainy day" definition (old US system, still used by India\'s IMD). This is what RainLog Lab uses.<br>• Intensity bands (daily): &lt;1 none · 1–5 very light · 5–10 light · 10–30 moderate · &gt;30 heavy.<br><br><b>⚠ But "rainy day" ≠ "dangerous" — it\'s intensity, not total</b><br>This app uses daily total (mm/day) because it\'s the fair way to compare models. But real flood risk is defined by MET Malaysia in hourly intensity (mm/hour):<br>• <b>Thunderstorm warning</b>: rainfall intensity <b>above 20 mm/hour</b> (valid up to 6 hours).<br>• <b>Flash flood</b>: convective rain <b>exceeding 60 mm in 2–4 hours</b> typically triggers one.<br>• <b>Continuous-rain warnings</b>, 3 levels: Waspada (Beware, yellow) · Buruk (Bad, orange) · Bahaya (Danger, red).<br>Monsoon rain is prolonged with intermittent downpours and can occasionally exceed several hundred mm in 24 hours.<br>So 50 mm spread over a whole day vs 50 mm dumped in one hour — same total, wildly different risk. For intensity and flood alerts, use the sister app <b>FlashFlood Lab</b>.<br><br>A higher threshold means only rain that actually matters counts — closer to real orchard decisions. Set it to suit your crop.',
+    run:'Start duel',rescore:'Re-score',proxySave:'Save',board:'Scoreboard',log:'Day-by-day',explain:'Metric guide',
+    inname:'Location name',gps:'Use current location',save:'Save location',search:'Search locations…',
+    update:'Update location',cancel:'Cancel',addNew:'＋ Add new location',secAdd:'Add location',secEdit:'Edit location',secPick:'Pick location',editing:n=>`Editing: ${n}`,updated:'Updated ✓',
+    keptNear:m=>`Updated (moved ${m}m, records kept)`,
+    date:'Date',met:'MET',ecmwf:'ECMWF',actual:'Actual',rain:'Rain',dry:'Dry',
+    metTown:t=>`MET: ${t}`,gpsBadge:'GPS',customBadge:'Custom',
+    metSwitch:'Choose MET comparison point',metNearest:'Nearest MET locations',
+    metSrcOfficial:'Coordinates: MET official',metSrcTable:'Coordinates: built-in table (approx.)',
+    metSwitched:n=>`Now using MET: ${n}`,metVs:'vs',metManual:'(manual)',
+    metFar:'far — results indicative only',metChange:'Change',
+    rank:'Cross-farm ranking',rankMetWins:'MET wins',rankEcWins:'ECMWF wins',rankTies:'Ties',rankTie:'Tie',
+    rankHint:n=>`${n} farms scored`,rankEmpty:'No scored farms yet · check back after logging a few days',
+    rankPending:n=>`${n} farms awaiting ERA5 backfill`,
+    selectFirst:'Pick a location first',tapToSelect:'Tap to pick a farm ▾',
+    verdictWin:(w,a,b)=>`<b>${w}</b> wins · CSI ${a} vs ${b}`,
+    verdictTie:'Dead heat · identical CSI',verdictPending:'🏆 The winner will appear here once scores mature',
+    share:'Share to WhatsApp',sharePrevTitle:'Preview · WhatsApp message',shareCancel:'Cancel',shareSend:'Send',
+    shTitle:'🏆 ModelDuel · Scorecard',
+    shTie:'Dead heat · identical CSI',
+    shWin:(w,a,b)=>`✅ ${w} wins · CSI ${a} vs ${b}`,
+    shPending:'⏳ Not enough actual data yet',
+    shScores:'Scores (CSI/POD higher better, FAR lower better):',
+    shAmount:(m,mae,n)=>`🌧 ${m} amount off by ${mae} mm/day avg (${n} days) · MET has no mm data`,
+    shDays:n=>`📊 ${n} days scored (vs ERA5 actuals)`,
+    shNoData:'📊 Data building; actuals backfill ~5 days later',
+    shFoot:'— ModelDuel Lab · data Open-Meteo/MET Malaysia',
+    export:'📥 Export Excel (this farm\'s raw data)',
+    exportDone:n=>`Exported ${n} days (.xlsx)`,
+    exportEmpty:'No records to export for this farm yet',
+    amountLine:(mae,n,m)=>`🌧 Amount accuracy: ${m} off by <b>${mae} mm/day</b> avg (vs ERA5 actual, ${n} days) · MET has no mm data`,
+    periodTitle:'Time-of-day accuracy · CSI (higher is better)',pMorning:'Morn',pAfternoon:'Aft',pNight:'Night',
+    labCSI:'CSI',labPOD:'POD',labFAR:'FAR',
+    periodFoot:'Morn 6-12 · Aft 12-18 · Night 18-24h · vs ERA5 actual',
+    explainBody:'Hit rate (POD): of the days it actually rained, the share correctly forecast — higher is better. '+
+      'False-alarm rate (FAR): of the days rain was forecast, the share that stayed dry — lower is better. '+
+      'Overall (CSI): hits, misses and false alarms combined = hits ÷ (hits + misses + false alarms), 0–1, higher is better — the single best summary. '+
+      'Both models are scored against ERA5 actual rainfall as truth, not against each other.',
+    matLive:n=>`${n} days of real data compared`,
+    matThin:'Small sample — indicative only (aim ≥14 days)',
+    matScored:n=>`${n} days scored (with actuals)`,matPending:n=>`${n} awaiting ERA5 backfill`,logRows:n=>`${n} days logged`,
+    metPeriodLegend:'Under each date, 🌅morn ☀️aft 🌙night = MET\'s per-period forecast: filled = rain forecast for that period, faint = dry, dashed = no data. (MET\'s unique time-of-day breakdown.)',
+    matEmpty:'No scorable data yet · log daily; ERA5 actuals backfill after 5 days',
+    introTitle:'This is a long-term experiment',
+    introBody:'Open the app once a day and log the forecast. Actual rain (ERA5) backfills about <b>5 days later</b>, so your first score appears on day 5-6 at the earliest.<br>Scores become <b>indicative after ~2 weeks</b> (≥14 days) and <b>trustworthy after ~3 weeks</b> (~20 days). Keep logging daily 🌱',
+    logToday:'Log today\'s forecast',logging:'Logging…',
+    loggedOk:t=>`Logged · MET: ${t}`,loggedNoMet:'Logged ECMWF (no MET data / proxy unset)',
+    noProxy:'No MET proxy URL set — logging ECMWF only. See Settings.',
+    setProxy:'MET proxy URL (Cloudflare Worker)',proxySaved:'Proxy URL saved',
+    proxyCheck:'Check connection',advanced:'Advanced',langLabel:'语言 / Language',
+    wsChecking:'Checking…',wsNoUrl:'Enter a proxy URL first',
+    wsOnline:'Worker online',wsOffline:'Cannot reach Worker',
+    wsSrcMet:'Coordinates: MET official ✓',wsSrcTable:'Coordinates: built-in table (approx.)',
+    wsSrcUnknown:'Coordinate source unknown',wsCount:n=>`${n} MET locations available`,
+    wsHint:'Check the URL is correct and the Worker is deployed.',
+    autoLogLabel:'Auto-log daily (on open)',
+    autoRunning:(d,n)=>`Drive mode… ${d}/${n}`,autoDone:n=>`Logged ${n} location(s) ✓`,
+    autoStopped:(d,n)=>`Paused (${d}/${n} · tap to resume)`,
+    alOff:'Off',alActive:'Active farm only',alRegion:r=>`${r} (whole region)`,alAll:'All farms',
+    driveNow:'Log all now (drive mode)',
+    updateRegion:'Update all farms in this region',regionDone:n=>`Updated ${n} farms ✓`,
+    regionDoneFailed:(ok,n,names)=>{const shown=names.slice(0,4).join(', ');const extra=names.length>4?` +${names.length-4} more`:'';return `Updated ${ok}/${n} · failed: ${shown}${extra} (retry)`;},
+    drivePromptMsg:(scope,n)=>`Daily auto-log is on (${scope}). Log ${n} locations now via drive mode? It keeps the screen awake — keep the app in the foreground while it runs.`,
+    drivePromptGo:'Start logging',drivePromptSkip:'Skip today',drivePromptOff:'Turn off auto-log',
+    autoOffNow:'Daily auto-log turned off',autoBatchSet:'Saved · next launch will ask before starting drive-mode logging',
+    settings:'Settings',
+    errNet:'Could not fetch data. Check your connection and try again.',
+    errMet:'MET Malaysia returned nothing / needs token. No MET data for this spot.',
+    errRange:'Pick a valid date range.',running:'Running the duel…',
+    gpsErr:'Location unavailable',gpsOk:'Coordinates filled',needName:'Enter name & coordinates',
+    softDeleted:'Deleted',undo:'Undo',restored:'Restored ✓',
+    restore:'Restore',bin:n=>`Recycle bin (${n})`,purge:'Empty recycle bin permanently',
+    confirmPurge:'Permanently delete all binned locations and their records? This cannot be undone.',purged:'Recycle bin emptied',
+    foot:'MET categorical forecasts and the challenger model\'s numeric rain (mm) both collapse to a rain/dry verdict, '+
+      'scored against ERA5 actuals. Farm coordinates auto-map to the nearest MET town. '+
+      'Offline-capable · data stays on device · v1.0.0\n\n'+
+      'Data sources & credits:\n'+
+      '· Forecast: MET Malaysia — Malaysian Meteorological Department (data.gov.my)\n'+
+      '· Challenger models: ECMWF (EU) · DWD ICON (Germany) · NOAA GFS (USA) · ECCC GEM (Canada) · JMA (Japan) · CMA (China)\n'+
+      '· Truth: ECMWF ERA5 reanalysis\n'+
+      '· Model & ERA5 data served via Open-Meteo (CC-BY 4.0)\n'+
+      '· Built with Claude Opus 4.8 (Anthropic)'}
+};
+const T=()=>I18N[LANG];
+
+/* ===================== render: static labels ===================== */
+function paintLabels(){
+  const t=T(),set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  set('t-title',t.title);$('#t-sub').textContent=t.sub(challengerInfo().name);set('t-locs',t.locs);set('t-setup',t.setup);
+  set('t-challenger',t.challengerLabel);
+  set('t-thresh',t.thresh);set('t-run',t.rescore);
+  set('t-thresh-help-sum',t.threshHelpSum);
+  {const hb=$('#threshHelpBody');if(hb)hb.innerHTML=t.threshHelp;}
+  set('t-board',t.board);set('t-log',t.log);set('t-explain',t.explain);set('t-rank',t.rank);
+  set('t-share',t.share);set('t-share-title',t.sharePrevTitle);set('t-share-cancel',t.shareCancel);set('t-share-send',t.shareSend);
+  set('t-export',t.export);
+  set('t-inname',t.inname);set('t-gps',t.gps);set('t-save',editingId?t.update:t.save);set('t-cancel',t.cancel);
+  set('t-sec-add',editingId?t.secEdit:t.secAdd);
+  set('t-metswitch',t.metSwitch);
+  const ms=$('#metSearch');if(ms)ms.placeholder=t.metSearch||t.search;
+  if(editingId){const l=state.locations.find(x=>x.id===editingId);if(l)$('#editingTag').textContent=t.editing(l.name);}
+  set('t-logtoday',t.logToday);set('t-settings',t.settings);
+  set('t-proxycheck',t.proxyCheck);set('t-autolog',t.autoLogLabel);set('t-langlabel',t.langLabel);set('t-drivenow',t.driveNow);
+  if($('#autoLog')) populateAutoLogOptions();
+  $('#filter').placeholder=t.search;$('#explain-body').textContent=t.explainBody;
+  $('#foot').textContent=t.foot;
+  set('t-intro-title',t.introTitle);
+  const ib=$('#t-intro-body');if(ib)ib.innerHTML=t.introBody;
+  document.documentElement.lang=LANG==='zh'?'zh':'en';
+  updateIntro();
+}
+
+/* The "long-term experiment" note stays available (collapsible) until the
+   user has scored data. Collapsed/expanded state is remembered. */
+const INTRO_KEY=NS+'.introCollapsed';
+function anyScored(){
+  for(const id in state.log){ const lg=state.log[id];
+    for(const d in lg){ if(lg[d] && lg[d].actual!=null) return true; } }
+  return false;
+}
+function updateIntro(){
+  const note=$('#introNote');if(!note)return;
+  // hide entirely once real scores exist; otherwise show (collapsed or expanded)
+  if(anyScored()){ note.style.display='none'; return; }
+  note.style.display='block';
+  const collapsed=localStorage.getItem(INTRO_KEY)==='1';
+  note.classList.toggle('collapsed',collapsed);
+  const chev=$('#introChev');if(chev)chev.textContent=collapsed?'▶':'▼';
+}
+function toggleIntro(){
+  const collapsed=localStorage.getItem(INTRO_KEY)==='1';
+  localStorage.setItem(INTRO_KEY, collapsed?'0':'1');
+  updateIntro();
+}
+
+/* ===================== render: location list (accordion by region) ===================== */
+let locCardOpen=false;   // master collapse state; starts collapsed once seeds exist
+function setLocCard(open){
+  locCardOpen=open;
+  $('#locBody').style.display=open?'block':'none';
+  $('#locCard').classList.toggle('open',open);
+  $('#locChev').textContent=open?'▼':'▶';
+  updateLocHint();
+}
+function toggleLocCard(){ setLocCard(!locCardOpen); }
+function updateLocHint(){
+  const hint=$('#locActiveHint');
+  if(locCardOpen){ hint.textContent=''; return; }
+  const l=state.locations.find(x=>x.id===activeLoc&&!x.deleted);
+  hint.textContent=l?l.name:T().tapToSelect;   // prompt when nothing is selected yet
+}
+function locBadge(l){
+  const t=T();
+  if(l.gps) return `<span class="badge gps">${t.gpsBadge}</span>`;
+  if(!l.region) return `<span class="badge custom">${t.customBadge}</span>`;
+  return '';
+}
+function renderLocList(){
+  const t=T(),q=($('#filter').value||'').toLowerCase().trim();
+  const live=state.locations.filter(l=>!l.deleted);
+  const groups={};
+  for(const l of live){
+    if(q && !l.name.toLowerCase().includes(q)) continue;
+    const g=l.region||(LANG==='zh'?'其他 / 自订':'Other / Custom');
+    (groups[g]=groups[g]||[]).push(l);
+  }
+  const el=$('#locList');
+  const keys=Object.keys(groups);
+  if(keys.length===0){el.innerHTML=`<div class="empty">${q?'—':t.selectFirst}</div>`;return;}
+  let html='';
+  for(const g of keys){
+    const rows=groups[g];
+    const autoOpen=!!q||rows.some(r=>r.id===activeLoc);
+    html+=`<div class="region${autoOpen?' open':''}">
+      <div class="region-hd" onclick="toggleRegion(this)">
+        <span class="rn">${g}</span>
+        <span class="region-right">
+          <button class="rgn-fetch" data-region="${g.replace(/"/g,'&quot;')}" onclick="event.stopPropagation();fetchRegion(this)" title="${t.updateRegion}">↻</button>
+          <span class="rc">${rows.length}</span> <span class="chev">${autoOpen?'▼':'▶'}</span>
+        </span>
+      </div><div class="region-body">`;
+    for(const l of rows){
+      const nt=nearestTown(+l.lat,+l.lon);
+      const town=l.metTownChosen||nt.town;
+      const km=l.metTownChosen?(l.metTownKm!=null?l.metTownKm:null):nt.km;
+      const kmTxt=km!=null?` · ${km}km`:'';
+      const chosenMark=l.metTownChosen?' ✎':'';
+      html+=`<div class="loc${l.id===activeLoc?' sel':''}" onclick="selectLoc('${l.id}')">
+        <div class="ln"><div class="lname">${l.name}</div>
+          <div class="lmeta">${(+l.lat).toFixed(3)}, ${(+l.lon).toFixed(3)}</div>
+          <div class="lmeta-met"><span class="met-town" onclick="event.stopPropagation();openMetSwitch('${l.id}')">${t.metTown(town)}${kmTxt}${chosenMark} ⇄</span></div></div>
+        ${locBadge(l)}
+        <span class="edit" onclick="event.stopPropagation();startEdit('${l.id}')">✎</span>
+        <span class="del" onclick="event.stopPropagation();softDelLoc('${l.id}')">🗑</span></div>`;
+    }
+    html+='</div></div>';
+  }
+  el.innerHTML=html;
+  renderBin();
+}
+function setActiveLoc(id){ activeLoc=id; state.activeLoc=id||null; save(); }
+function selectLoc(id){setActiveLoc(id);renderLocList();updateLocHint();}
+/* Toggle a region open/closed and swap its chevron glyph directly (WebView
+   doesn't reliably render CSS rotate on the ▶ arrow, so we swap ▶↔▼). */
+function toggleRegion(el){
+  const region=el.parentNode;
+  const open=region.classList.toggle('open');
+  const chev=el.querySelector('.chev');
+  if(chev) chev.textContent=open?'▼':'▶';
+}
+function activeLocs(){return state.locations.filter(l=>!l.deleted);}
+function deletedLocs(){return state.locations.filter(l=>l.deleted);}
+
+/* soft delete → recycle bin (never a hard delete). Records/log kept so a
+   restore brings everything back. A toast offers immediate undo. Applies
+   to seed farms and custom farms alike — deletion is reversible, not blocked. */
+function softDelLoc(id){
+  const l=state.locations.find(x=>x.id===id);if(!l)return;
+  l.deleted=true;
+  if(activeLoc===id){ activeLoc=null; state.activeLoc=null; $('#board-card').style.display='none'; $('#log-card').style.display='none'; }
+  save();
+  renderLocList();updateLocHint();
+  toast(`${T().softDeleted} · ${l.name}`, T().undo, ()=>restoreLoc(id));
+}
+function restoreLoc(id){
+  const l=state.locations.find(x=>x.id===id);if(!l)return;
+  delete l.deleted;save();
+  renderLocList();toast(T().restored);
+}
+/* purge: permanent, irreversible — only touches already-binned farms, and
+   drops their accumulated log so the store doesn't keep orphaned history. */
+function purgeBin(){
+  if(!confirm(T().confirmPurge)) return;
+  for(const l of deletedLocs()){ delete state.log[l.id]; }
+  state.locations=activeLocs();save();renderLocList();toast(T().purged);
+}
+
+/* toast with optional single action (e.g. Undo) */
+let _toastTimer=null;
+function toast(msg,actionLabel,onAction){
+  const el=$('#toast');
+  el.innerHTML=`<span>${msg}</span>`+
+    (actionLabel?`<button id="toastAct">${actionLabel}</button>`:'');
+  el.classList.add('show');
+  if(actionLabel&&onAction) $('#toastAct').onclick=()=>{el.classList.remove('show');onAction();};
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>el.classList.remove('show'),5000);
+}
+
+function renderBin(){
+  const t=T(),mount=$('#binMount'),gone=deletedLocs();
+  if(!gone.length){mount.innerHTML='';return;}
+  let items='';
+  for(const l of gone){
+    items+=`<div class="loc deleted">
+      <div class="ln"><div class="lname">${l.name}</div>
+        <div class="lmeta">${(+l.lat).toFixed(3)}, ${(+l.lon).toFixed(3)}</div></div>
+      <button class="restore" onclick="restoreLoc('${l.id}')">↩ ${t.restore}</button></div>`;
+  }
+  mount.innerHTML=`<details class="bin"><summary>${t.bin(gone.length)}</summary>
+    <div style="margin-top:8px">${items}</div>
+    <button class="purge-btn" onclick="purgeBin()">🗑 ${t.purge}</button></details>`;
+}
+
+/* ===================== add / edit / GPS ===================== */
+const MOVE_KEEP_KM=1;   // within 1km = same weather grid cell → keep the log
+
+/* Add-location card is hidden until the + is tapped */
+function showAddCard(){ $('#addCard').style.display='block';$('#btnCancelEdit').style.display='block'; }
+function hideAddCard(){ $('#addCard').style.display='none'; }
+function toggleAddCard(){
+  showAddCard();$('#inName').focus();   // + always opens; Cancel inside the card closes
+}
+function startEdit(id){
+  const loc=state.locations.find(l=>l.id===id);if(!loc)return;
+  editingId=id;
+  showAddCard();
+  $('#inName').value=loc.name;$('#inLat').value=loc.lat;$('#inLon').value=loc.lon;
+  $('#inLat').dataset.gps='';
+  const t=T();
+  $('#btnAdd').querySelector('span').textContent=t.update;
+  $('#btnCancelEdit').style.display='block';
+  document.querySelector('#t-sec-add').textContent=t.secEdit;
+  $('#editingTag').style.display='block';$('#editingTag').textContent=t.editing(loc.name);
+  $('#addCard').scrollIntoView&&$('#addCard').scrollIntoView({behavior:'smooth',block:'center'});
+  $('#inName').focus();
+}
+function endEdit(){
+  editingId=null;
+  $('#inName').value=$('#inLat').value=$('#inLon').value='';$('#inLat').dataset.gps='';
+  $('#btnAdd').querySelector('span').textContent=T().save;
+  $('#btnCancelEdit').style.display='none';
+  document.querySelector('#t-sec-add').textContent=T().secAdd;
+  $('#editingTag').style.display='none';
+}
+/* cancel: discard input, reset the form, and hide the card */
+function cancelEdit(){ endEdit();hideAddCard(); }
+function saveLoc(){
+  const t=T();
+  const name=$('#inName').value.trim(),lat=parseFloat($('#inLat').value),lon=parseFloat($('#inLon').value);
+  if(!name||isNaN(lat)||isNaN(lon)){status(t.needName,'err');return;}
+  if(editingId){
+    const loc=state.locations.find(l=>l.id===editingId);
+    if(loc){
+      const movedKm=haversine(+loc.lat,+loc.lon,lat,lon);
+      const farMove=movedKm>MOVE_KEEP_KM;   // beyond 1km = a different place
+      loc.name=name;loc.lat=lat;loc.lon=lon;
+      delete loc.metTown;                    // recompute nearest MET town for new coords
+      // A big move makes the old forecast/actual log belong elsewhere → reset it.
+      // A small move stays in the same grid cell, so the log is kept.
+      if(farMove) state.log[loc.id]={};
+      save();
+      setActiveLoc(loc.id);endEdit();hideAddCard();renderLocList();updateLocHint();
+      if(movedKm>0 && !farMove) status(t.keptNear(Math.round(movedKm*1000)),'ok');
+      else status(t.updated,'ok');
+      if(lastResult) runDuel();
+    }
+  }else{
+    const id=uid();
+    const wasGps=$('#inLat').dataset.gps==='1';
+    state.locations.push({id,name,lat,lon,gps:wasGps});
+    setActiveLoc(id);endEdit();hideAddCard();renderLocList();updateLocHint();runDuel();
+  }
+}
+function useGps(){
+  const t=T();
+  if(!navigator.geolocation){status(t.gpsErr,'err');return;}
+  navigator.geolocation.getCurrentPosition(p=>{
+    $('#inLat').value=p.coords.latitude.toFixed(4);
+    $('#inLon').value=p.coords.longitude.toFixed(4);
+    $('#inLat').dataset.gps='1';
+    if(!$('#inName').value.trim()) $('#inName').value=(LANG==='zh'?'当前位置':'Current location');
+    status(t.gpsOk,'ok');
+  },()=>status(t.gpsErr,'err'),{enableHighAccuracy:true,timeout:10000});
+}
+
+/* ===================== MET location switcher ===================== */
+let metSwitchFarmId=null;   // farm being switched
+let metNearList=[];         // [{name,km,lat,lon,source}] from Worker or local
+let metAllList=[];          // full list for search
+let metSource='table';
+
+async function openMetSwitch(farmId){
+  const loc=state.locations.find(l=>l.id===farmId&&!l.deleted);
+  if(!loc)return;
+  metSwitchFarmId=farmId;
+  $('#metModalFarm').textContent=loc.name;
+  $('#metSearch').value='';
+  $('#metModal').style.display='flex';
+  // start with instant local ranking so the modal is never empty
+  metNearList=localNearest(+loc.lat,+loc.lon,6);
+  metAllList=MET_TOWNS.map(t=>({name:t.town,lat:t.lat,lon:t.lon,
+    km:Math.round(haversine(+loc.lat,+loc.lon,t.lat,t.lon)*10)/10,source:'table'}))
+    .sort((a,b)=>a.km-b.km);
+  metSource='table';
+  renderMetOptions();
+  // then upgrade with the Worker's authoritative list (has official coords)
+  const base=(state.settings.metProxy||'').replace(/\/+$/,'');
+  if(base){
+    try{
+      const r=await fetch(`${base}/nearest?lat=${loc.lat}&lon=${loc.lon}&n=8`);
+      if(r.ok){
+        const j=await r.json();
+        if(j.nearest&&j.nearest.length){
+          metNearList=j.nearest.map(x=>({name:x.town||x.name,km:x.km,lat:x.lat,lon:x.lon,source:j.source}));
+          metSource=j.source||'met';
+        }
+      }
+      // full list for search
+      const rt=await fetch(`${base}/towns`);
+      if(rt.ok){
+        const jt=await rt.json();
+        if(jt.locations&&jt.locations.length){
+          metAllList=jt.locations.map(x=>({name:x.name,lat:x.lat,lon:x.lon,
+            km:(x.lat!=null)?Math.round(haversine(+loc.lat,+loc.lon,x.lat,x.lon)*10)/10:null,source:jt.source}))
+            .sort((a,b)=>(a.km==null?1e9:a.km)-(b.km==null?1e9:b.km));
+          metSource=jt.source||metSource;
+        }
+      }
+      if(metSwitchFarmId===farmId) renderMetOptions();
+    }catch(e){/* keep local */}
+  }
+}
+function closeMetSwitch(){ $('#metModal').style.display='none';metSwitchFarmId=null; }
+function localNearest(lat,lon,n){
+  return MET_TOWNS.map(t=>({name:t.town,lat:t.lat,lon:t.lon,
+    km:Math.round(haversine(lat,lon,t.lat,t.lon)*10)/10,source:'table'}))
+    .sort((a,b)=>a.km-b.km).slice(0,n);
+}
+function renderMetOptions(){
+  const t=T();
+  const loc=state.locations.find(l=>l.id===metSwitchFarmId&&!l.deleted);
+  if(!loc)return;
+  const q=($('#metSearch').value||'').toLowerCase().trim();
+  const cur=loc.metTownChosen||nearestTown(+loc.lat,+loc.lon).town;
+  const opt=(x)=>`<div class="met-opt${x.name===cur?' current':''}" onclick="applyMetTown('${encodeURIComponent(x.name)}',${x.km==null?'null':x.km})">
+    <span class="mo-name">${x.name}</span>
+    <span class="mo-km">${x.km==null?'':x.km+'km'}${x.name===cur?' ✓':''}</span></div>`;
+  let html='';
+  if(q){
+    const hits=metAllList.filter(x=>x.name.toLowerCase().includes(q)).slice(0,40);
+    $('#metNearLabel').textContent='';
+    html=hits.length?hits.map(opt).join(''):`<div class="empty">—</div>`;
+  }else{
+    $('#metNearLabel').textContent=t.metNearest;
+    html=metNearList.map(opt).join('');
+  }
+  $('#metOptions').innerHTML=html
+    +`<div class="met-src">${metSource==='met'?t.metSrcOfficial:t.metSrcTable}</div>`;
+}
+function applyMetTown(nameEnc,km){
+  const name=decodeURIComponent(nameEnc);
+  const loc=state.locations.find(l=>l.id===metSwitchFarmId&&!l.deleted);
+  if(!loc)return;
+  const auto=nearestTown(+loc.lat,+loc.lon).town;
+  if(name===auto){ delete loc.metTownChosen;delete loc.metTownKm; }  // back to auto
+  else { loc.metTownChosen=name;loc.metTownKm=(km==null?null:km); }
+  // moving MET town invalidates logged MET history for this farm (different point)
+  if(state.log[loc.id]) for(const d in state.log[loc.id]) delete state.log[loc.id][d].met;
+  save();closeMetSwitch();renderLocList();
+  if(loc.id===activeLoc&&lastResult) runDuel();
+  toast(T().metSwitched(name));
+}
+
+/* ===================== status ===================== */
+function status(msg,kind){
+  const e=$('#status');e.innerHTML=msg;e.className='status show '+(kind||'');
+  if(kind==='ok') setTimeout(()=>e.classList.remove('show'),3200);
+}
+
+/* ===================== live fetch ===================== */
+/* ---- MET forecast via Cloudflare Worker (CORS proxy).
+   Worker resolves nearest town from lat/lon and returns per-date rain flags. */
+async function fetchMETviaProxy(lat,lon,chosenTown){
+  const base=(state.settings.metProxy||'').replace(/\/+$/,'');
+  if(!base) throw new Error('no-proxy');
+  const q=chosenTown?`town=${encodeURIComponent(chosenTown)}&lat=${lat}&lon=${lon}`:`lat=${lat}&lon=${lon}`;
+  const r=await fetch(`${base}/forecast?${q}`);
+  if(!r.ok) throw new Error('proxy '+r.status);
+  const j=await r.json();               // { town, km, days:[{date,rain,morning,afternoon,night}] }
+  const met={},metP={};
+  (j.days||[]).forEach(d=>{
+    met[d.date]=d.rain;
+    metP[d.date]={morning:d.morning??null,afternoon:d.afternoon??null,night:d.night??null};
+  });
+  return {town:j.town,km:(j.km!=null?j.km:null),met,metP,matched:j.matched_rows||0};
+}
+/* Time-of-day windows (local KL hours). MET splits the day into these three
+   periods; we bin ECMWF/ERA5 hourly rainfall into the same windows to compare. */
+const PERIODS=[['morning',6,12],['afternoon',12,18],['night',18,24]];
+/* Given an hourly {timeISO: mm} map for one date, return per-period rain flags. */
+function binHourlyToPeriods(hours, date, thresh){
+  const out={morning:null,afternoon:null,night:null};
+  for(const [name,h0,h1] of PERIODS){
+    let sum=0,seen=false;
+    for(let h=h0;h<h1;h++){
+      const key=`${date}T${String(h).padStart(2,'0')}:00`;
+      if(hours[key]!=null){ sum+=hours[key]; seen=true; }
+    }
+    out[name]=seen?(sum>=thresh?1:0):null;
+  }
+  return out;
+}
+/* ---- Challenger model forecast for the coming days (Open-Meteo, keyless) ----
+   Which model fills the challenger slot is user-selectable (see CHALLENGERS). */
+async function fetchECMWFforecast(lat,lon,thresh){
+  const model=challengerKey();
+  // daily (for amount) AND hourly (for time-of-day periods)
+  const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`+
+    `&daily=precipitation_sum&hourly=precipitation&forecast_days=7&models=${model}&timezone=Asia%2FKuala_Lumpur`;
+  const r=await fetch(u);if(!r.ok) throw new Error('challenger '+r.status);
+  const j=await r.json();const out={};
+  // hourly map: "YYYY-MM-DDTHH:00" → mm
+  const hours={};
+  (j.hourly?.time||[]).forEach((tkey,i)=>{ hours[tkey.slice(0,13)+':00']=j.hourly.precipitation[i]; });
+  (j.daily?.time||[]).forEach((d,i)=>{
+    const mm=j.daily.precipitation_sum[i];
+    out[d]={rain:mm==null?null:(mm>=thresh?1:0),mm,periods:binHourlyToPeriods(hours,d,thresh)};
+  });
+  return out;
+}
+/* ---- ERA5 actuals to backfill past dates (Open-Meteo archive) ---- */
+async function fetchERA5actuals(lat,lon,from,to,thresh){
+  const u=`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}`+
+    `&start_date=${from}&end_date=${to}&daily=precipitation_sum&hourly=precipitation&timezone=Asia%2FKuala_Lumpur`;
+  const r=await fetch(u);if(!r.ok) throw new Error('era5 '+r.status);
+  const j=await r.json();const out={};
+  const hours={};
+  (j.hourly?.time||[]).forEach((tkey,i)=>{ hours[tkey.slice(0,13)+':00']=j.hourly.precipitation[i]; });
+  (j.daily?.time||[]).forEach((d,i)=>{
+    const mm=j.daily.precipitation_sum[i];
+    out[d]=mm==null?null:{rain:(mm>=thresh?1:0),mm,periods:binHourlyToPeriods(hours,d,thresh)};
+  });
+  return out;
+}
+
+/* ---- shared logging core: capture MET+ECMWF forecasts and backfill ERA5
+   for ONE farm. Pure data work, no UI. Returns {gotMet, metTown}. ---- */
+async function logOneFarm(loc, thresh){
+  const lg=logFor(loc.id);
+  let gotMet=false, metTown=loc.metTownChosen||nearestTown(+loc.lat,+loc.lon).town, noProxy=false;
+  // 1. MET forecast (via proxy), honoring a user-chosen MET location
+  try{
+    const m=await fetchMETviaProxy(+loc.lat,+loc.lon,loc.metTownChosen);
+    metTown=m.town||metTown;
+    if(m.km!=null){ if(loc.metTownChosen) loc.metTownKm=m.km; else loc.metAutoKm=m.km; }
+    for(const [d,rain] of Object.entries(m.met)){
+      lg[d]=lg[d]||{};if(lg[d].met==null) lg[d].met=rain;   // never overwrite an earlier capture
+      if(lg[d].metP==null && m.metP && m.metP[d]) lg[d].metP=m.metP[d];   // MET periods
+    }
+    gotMet=m.matched>0;
+  }catch(e){ if(String(e.message)==='no-proxy') noProxy=true; }
+  // 2. Challenger model forecast (tag which model produced it, so switching
+  //    challengers never mixes two models' data in one score)
+  try{
+    const model=challengerKey();
+    const ec=await fetchECMWFforecast(+loc.lat,+loc.lon,thresh);
+    for(const [d,v] of Object.entries(ec)){
+      lg[d]=lg[d]||{};
+      if(lg[d].ecmwf==null || lg[d].ecModel!==model){
+        lg[d].ecmwf=v.rain;lg[d].ecmm=v.mm;lg[d].ecP=v.periods;lg[d].ecModel=model;
+      }
+    }
+  }catch(e){}
+  // 3. ERA5 actuals backfill (mature window)
+  const dates=Object.keys(lg).sort();
+  if(dates.length){
+    const from=dates[0], to=daysAgoYMD(ERA5_LAG_DAYS);
+    if(from<=to){
+      try{
+        const act=await fetchERA5actuals(+loc.lat,+loc.lon,from,to,thresh);
+        for(const [d,a] of Object.entries(act)){
+          if(!lg[d]) continue;
+          if(a==null){ continue; }
+          // new shape {rain,mm,periods}; also tolerate legacy plain 0/1
+          if(typeof a==='object'){ lg[d].actual=a.rain; lg[d].actmm=a.mm; if(a.periods) lg[d].actP=a.periods; }
+          else { lg[d].actual=a; }
+        }
+      }catch(e){}
+    }
+  }
+  loc.metTown=metTown;
+  return {gotMet,metTown,noProxy};
+}
+
+/* ===================== LOG TODAY (manual, active farm, with UI) ============== */
+async function logToday(){
+  const t=T();
+  const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted);
+  if(!loc){status(t.selectFirst,'err');return;}
+  const thresh=getThresh();
+  status(t.logging,'warn');$('#logBtn').disabled=true;
+  try{
+    const {gotMet,metTown,noProxy}=await logOneFarm(loc,thresh);
+    stampLogDay();save();
+    runDuel();
+    if(noProxy) status(t.noProxy,'warn');
+    else status(gotMet?t.loggedOk(metTown):t.loggedNoMet,'ok');
+  }catch(e){status(t.errNet,'err');}
+  finally{$('#logBtn').disabled=false;}
+}
+
+/* ===================== AUTO-LOG (once per calendar day, on open) ============= */
+const LOGDAY_KEY=NS+'.lastLogDay';
+function stampLogDay(){ localStorage.setItem(LOGDAY_KEY, todayYMD()); }
+function alreadyLoggedToday(){ return localStorage.getItem(LOGDAY_KEY)===todayYMD(); }
+
+const DRIVE_GAP_MS=250;            // deliberate pacing, gentle on Open-Meteo / Worker
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let driveRunning=false, driveAbort=false;
+
+/* Drive-mode batch (RainScore/RainLog mechanism): logs a set of farms slowly,
+   keeping the screen awake, resumable if interrupted, skipping farms already
+   done today. `farms` is the list to process. */
+async function driveLog(farms, thresh){
+  if(driveRunning){ driveAbort=true; return; }   // second call = stop/pause
+  if(!farms.length){ return; }
+  const t=T();
+  driveRunning=true; driveAbort=false;
+
+  // Keep the screen awake for the whole run. iOS drops the wake lock whenever the
+  // page is hidden and does NOT auto-reacquire — so re-request on every visibility gain.
+  let wake=null;
+  const acquireWake=async()=>{
+    try{
+      if(navigator.wakeLock && driveRunning && document.visibilityState==="visible"){
+        wake=await navigator.wakeLock.request("screen");
+        wake.addEventListener && wake.addEventListener("release",()=>{ wake=null; });
+      }
+    }catch(_){}
+  };
+  const onVis=()=>{ if(document.visibilityState==="visible") acquireWake(); };
+  document.addEventListener("visibilitychange", onVis);
+  await acquireWake();
+
+  let done=0, failed=0, skipped=0;
+  const report=()=>status(t.autoRunning(done+skipped,farms.length),'warn');
+  report();
+
+  for(const loc of farms){
+    if(driveAbort) break;
+    // skip farms whose log already covers today (resume-safe, no double fetch)
+    const lg=state.log[loc.id]||{};
+    if(lg[todayYMD()] && lg[todayYMD()].met!=null){ skipped++; report(); continue; }
+    try{
+      await logOneFarm(loc,thresh);
+      const r=state.log[loc.id];
+      if(r && Object.keys(r).length>0) done++; else failed++;
+    }catch(e){ failed++; }
+    report();
+    if(!wake) await acquireWake();            // restore lock if dropped while hidden
+    if(loc.id===activeLoc){ try{ runDuel(); }catch(_){} }  // live-refresh active farm
+    if(driveAbort) break;
+    await sleep(DRIVE_GAP_MS);                 // interruptible pacing
+  }
+
+  driveRunning=false;
+  document.removeEventListener("visibilitychange", onVis);
+  try{ if(wake) await wake.release(); }catch(_){}
+  wake=null;
+  save();
+  if(activeLoc){ try{ runDuel(); }catch(_){} }
+  if(rankCardOpen) renderRanking();
+  if(driveAbort) status(t.autoStopped(done+skipped,farms.length),'warn');
+  else status(t.autoDone(done+skipped),'ok');
+  return {done,failed,skipped};
+}
+
+/* Per-region refetch (↻ on the region header). Updates every farm in that
+   region, showing live progress on the button. Same gentle pacing as drive
+   mode, skips farms already done today. A second tap stops it. */
+let regionFetching=null;   // region name currently fetching, or null
+async function fetchRegion(btn){
+  const region=btn.getAttribute('data-region');
+  if(regionFetching===region){ regionAbort=true; return; }   // tap again = stop
+  const t=T();
+  const farms=state.locations.filter(l=>!l.deleted && (l.region||'')===region);
+  if(!farms.length){ return; }
+  const thresh=getThresh();
+  regionFetching=region; regionAbort=false;
+  btn.classList.add('busy');
+  let done=0,failed=0,skipped=0;
+  const failedNames=[];
+  const setBadge=()=>{ btn.innerHTML=`<span class="rf-ico">↻</span> ${done+skipped}/${farms.length}`; };
+  setBadge();
+  for(const loc of farms){
+    if(regionAbort) break;
+    const lg=state.log[loc.id]||{};
+    if(lg[todayYMD()] && lg[todayYMD()].met!=null){ skipped++; setBadge(); continue; }
+    try{ await logOneFarm(loc,thresh);
+      const r=state.log[loc.id];
+      if(r && Object.keys(r).length>0) done++; else { failed++; failedNames.push(loc.name); }
+    }catch(e){ failed++; failedNames.push(loc.name); }
+    setBadge();
+    if(loc.id===activeLoc){ try{ runDuel(); }catch(_){} }
+    if(regionAbort) break;
+    await sleep(DRIVE_GAP_MS);
+  }
+  regionFetching=null;
+  save();
+  if(rankCardOpen) renderRanking();
+  if(failed) status(t.regionDoneFailed(done+skipped,farms.length,failedNames),'warn');
+  else status(t.regionDone(done+skipped),'ok');
+  renderLocList();   // repaint restores the plain ↻ button
+}
+let regionAbort=false;
+
+async function autoLogOnOpen(){
+  const mode=state.settings.autoLog||'off';   // 'off' | 'active' | 'region:<name>' | 'all'
+  if(mode==='off') return;
+  if(alreadyLoggedToday()) return;             // once per day only
+  const thresh=getThresh();
+  const t=T();
+  if(mode==='active'){
+    const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted);
+    if(!loc) return;
+    try{ await logOneFarm(loc,thresh); stampLogDay(); save();
+      if(loc.id===activeLoc) runDuel();
+      status(t.autoDone(1),'ok'); }catch(e){}
+    return;
+  }
+  // region:<name> or all → drive-mode batch. This is a heavy background action
+  // (many fetches, keeps screen awake), so we DON'T start it silently on launch —
+  // we ask first, so the user isn't surprised by drive-mode kicking off.
+  let farms=state.locations.filter(l=>!l.deleted);
+  let scopeName=t.alAll;
+  if(mode.startsWith('region:')){
+    const rgn=mode.slice(7);
+    farms=farms.filter(l=>(l.region||'')===rgn);
+    scopeName=rgn;
+    if(!farms.length) return;
+  }
+  promptDriveConfirm(farms, scopeName, thresh);
+}
+
+/* Launch-time confirmation before auto drive-mode starts. */
+function promptDriveConfirm(farms, scopeName, thresh){
+  const t=T();
+  const bar=$('#drivePrompt');
+  bar.innerHTML=
+    `<div class="dp-text">${t.drivePromptMsg(scopeName, farms.length)}</div>`+
+    `<div class="dp-btns">`+
+      `<button class="dp-go" id="dpGo">${t.drivePromptGo}</button>`+
+      `<button class="dp-skip" id="dpSkip">${t.drivePromptSkip}</button>`+
+      `<button class="dp-off" id="dpOff">${t.drivePromptOff}</button>`+
+    `</div>`;
+  bar.classList.add('show');
+  $('#dpGo').onclick=async()=>{ bar.classList.remove('show'); await driveLog(farms,thresh); stampLogDay(); renderLocList(); };
+  $('#dpSkip').onclick=()=>{ bar.classList.remove('show'); stampLogDay(); };   // skip today, ask again tomorrow
+  $('#dpOff').onclick=()=>{ bar.classList.remove('show'); state.settings.autoLog='off'; save();
+    if($('#autoLog')) populateAutoLogOptions(); status(t.autoOffNow,'ok'); };
+}
+
+/* list of distinct regions among live farms, for the auto-log picker */
+function liveRegions(){
+  const s=new Set();
+  for(const l of state.locations) if(!l.deleted && l.region) s.add(l.region);
+  return [...s].sort();
+}
+
+/* ===================== RUN DUEL (score the accumulated log) ================== */
+function runDuel(){
+  const t=T();
+  const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted);
+  if(!loc){status(t.selectFirst,'err');return;}
+  const lg=state.log[loc.id]||{};
+  const auto=nearestTown(+loc.lat,+loc.lon);
+  const nt={ town: loc.metTownChosen||auto.town,
+             km: loc.metTownChosen?(loc.metTownKm!=null?loc.metTownKm:null):auto.km,
+             chosen: !!loc.metTownChosen };
+  // score only dates with a real actual; show all dates in the log table.
+  // Re-derive ECMWF & ERA5 rain/dry from stored mm at the CURRENT threshold so
+  // changing the threshold re-scores them correctly. MET has no mm, so its
+  // stored flag (captured at log time) is used as-is.
+  const th=getThresh();
+  const model=challengerKey();
+  const bin=(mm,stored)=> mm==null ? (stored==null?null:stored) : (mm>=th?1:0);
+  const rows=Object.keys(lg).sort().map(d=>{
+    // only count challenger data captured by the CURRENTLY selected model;
+    // days logged under a different challenger are ignored for its columns
+    const match=(lg[d].ecModel||'ecmwf_ifs')===model;
+    return {
+      date:d,
+      obs: bin(lg[d].actmm, lg[d].actual),
+      met: lg[d].met==null?null:lg[d].met,
+      ecmwf: match? bin(lg[d].ecmm, lg[d].ecmwf) : null,
+      ecmm: match&&lg[d].ecmm!=null?lg[d].ecmm:null,
+      actmm:lg[d].actmm==null?null:lg[d].actmm,
+      metP:lg[d].metP||null, ecP: match?(lg[d].ecP||null):null, actP:lg[d].actP||null
+    };
+  });
+  finishDuel(loc,nt,rows,false);
+  if(rankCardOpen) renderRanking();
+  updateIntro();
+}
+
+/* Per-period CSI for MET and ECMWF vs ERA5 actual, for each of the three
+   time windows. Returns {morning:{met,ec}, afternoon:{...}, night:{...}}. */
+function scorePeriods(rows){
+  const out={};
+  for(const [name] of PERIODS){
+    const met=[],ec=[];
+    for(const r of rows){
+      const a=r.actP&&r.actP[name]; if(a==null) continue;
+      if(r.metP) met.push({fc:r.metP[name]==null?null:r.metP[name],obs:a});
+      if(r.ecP)  ec.push({fc:r.ecP[name]==null?null:r.ecP[name],obs:a});
+    }
+    out[name]={met:score(met),ec:score(ec)};
+  }
+  return out;
+}
+
+/* Mean absolute error of ECMWF's predicted rainfall amount vs ERA5 actual (mm).
+   MET has no mm in its public API, so amount error is ECMWF-only. */
+function amountMAE(rows){
+  let sum=0,n=0;
+  for(const r of rows){
+    if(r.ecmm==null||r.actmm==null) continue;
+    sum+=Math.abs(r.ecmm-r.actmm); n++;
+  }
+  return n?{mae:sum/n,n}:{mae:null,n:0};
+}
+
+/* ===================== cross-farm ranking ===================== */
+/* Score one farm from its log (dates with a real actual only). */
+function scoreFarm(loc){
+  const lg=state.log[loc.id]||{};
+  const pairsMet=[],pairsEc=[];
+  for(const d of Object.keys(lg)){
+    const a=lg[d].actual; if(a==null) continue;
+    pairsMet.push({fc:lg[d].met==null?null:lg[d].met,obs:a});
+    pairsEc.push({fc:lg[d].ecmwf==null?null:lg[d].ecmwf,obs:a});
+  }
+  const met=score(pairsMet),ec=score(pairsEc);
+  const scored=Math.max(met.n?met.H+met.M+met.F+met.C:0, pairsMet.filter(p=>p.obs!=null).length);
+  return {loc,met,ec,scored:pairsMet.filter(p=>p.obs!=null).length};
+}
+
+let logCardOpen=true;   // day-by-day fetch log: expanded by default (verify app works at a glance)
+function toggleLogCard(){ setLogCard(!logCardOpen); }
+function setLogCard(open){
+  logCardOpen=open;
+  $('#log-body').style.display=open?'block':'none';
+  $('#logChev').textContent=open?'▼':'▶';
+  const hint=$('#logHint');
+  if(hint) hint.textContent=(!open && lastResult)?T().logRows(lastResult.rows.length):'';
+}
+
+let rankCardOpen=false;
+function toggleRankCard(){ setRankCard(!rankCardOpen); }
+function setRankCard(open){
+  rankCardOpen=open;
+  $('#rankBody').style.display=open?'block':'none';
+  $('#rankChev').textContent=open?'▼':'▶';
+  if(open) renderRanking();
+}
+
+function renderRanking(){
+  const t=T();
+  const farms=state.locations.filter(l=>!l.deleted);
+  const scored=[],pending=[];
+  for(const loc of farms){
+    const s=scoreFarm(loc);
+    if(s.scored>0 && s.met.csi!=null && s.ec.csi!=null) scored.push(s);
+    else pending.push(loc);
+  }
+  // rank: biggest MET-over-ECMWF margin first (positive = MET wins)
+  scored.forEach(s=>{ s.margin=s.met.csi-s.ec.csi; });
+  scored.sort((a,b)=>b.margin-a.margin);
+
+  let metWins=0,ecWins=0,ties=0;
+  for(const s of scored){
+    if(Math.abs(s.margin)<0.005) ties++;
+    else if(s.margin>0) metWins++; else ecWins++;
+  }
+  // summary boxes
+  $('#rankSummary').innerHTML=
+    `<div class="rs-box met"><div class="rs-n">${metWins}</div><div class="rs-lab">${t.rankMetWins}</div></div>`+
+    `<div class="rs-box tie"><div class="rs-n">${ties}</div><div class="rs-lab">${t.rankTies}</div></div>`+
+    `<div class="rs-box ecmwf"><div class="rs-n">${ecWins}</div><div class="rs-lab">${t.rankEcWins}</div></div>`;
+  $('#rankHint').textContent=scored.length?t.rankHint(scored.length):'';
+
+  let html='';
+  if(scored.length===0){
+    html=`<div class="empty">${t.rankEmpty}</div>`;
+  }else{
+    for(const s of scored){
+      const win=Math.abs(s.margin)<0.005?'tie':(s.margin>0?'met':'ecmwf');
+      const winLabel=win==='tie'?t.rankTie:(win==='met'?'MET':challengerInfo().name);
+      html+=`<div class="rank-row" onclick="jumpToFarm('${s.loc.id}')">
+        <span class="rr-name">${s.loc.name}</span>
+        <span class="rr-scores">${fmt(s.met.csi)} / ${fmt(s.ec.csi)}</span>
+        <span class="rr-win ${win}">${winLabel}</span></div>`;
+    }
+  }
+  if(pending.length){
+    html+=`<div class="rank-group-label">${t.rankPending(pending.length)}</div>`;
+  }
+  $('#rankList').innerHTML=html;
+}
+/* tapping a ranked farm selects it and shows its detailed duel */
+function jumpToFarm(id){
+  setActiveLoc(id);renderLocList();updateLocHint();runDuel();
+  $('#board-card').scrollIntoView&&$('#board-card').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function finishDuel(loc,nt,rows,isDemo){
+  const scored=rows.filter(r=>r.obs!=null).length;   // dates with a real actual
+  const amt=amountMAE(rows);
+  lastResult={loc:{name:loc.name},town:nt.town,townKm:(nt.km!=null?nt.km:null),
+    townChosen:!!nt.chosen,rows,scored,
+    met:score(rows.map(r=>({fc:r.met,obs:r.obs}))),
+    ecmwf:score(rows.map(r=>({fc:r.ecmwf,obs:r.obs}))),
+    ecMAE:amt.mae, ecMAEn:amt.n, periods:scorePeriods(rows), isDemo};
+  state.lastResult=lastResult;save();
+  renderResult();
+}
+
+function switchActiveMet(){ if(activeLoc) openMetSwitch(activeLoc); }
+
+/* ===================== WhatsApp share (scorecard) ===================== */
+/* Build a concise text summary of the current duel for WhatsApp. */
+function buildScorecardText(){
+  const t=T(),res=lastResult;if(!res)return '';
+  const info=challengerInfo();
+  const m=res.met,e=res.ecmwf;
+  const L=[];
+  L.push(t.shTitle);                               // header
+  L.push(`📍 ${res.loc.name}`);
+  L.push(`🆚 MET Malaysia vs ${info.full}`);
+  L.push('');
+  // verdict
+  if(m.csi!=null&&e.csi!=null){
+    if(Math.abs(m.csi-e.csi)<0.005) L.push(t.shTie);
+    else if(m.csi>e.csi) L.push(t.shWin('MET Malaysia',fmt(m.csi),fmt(e.csi)));
+    else L.push(t.shWin(info.name,fmt(e.csi),fmt(m.csi)));
+  } else { L.push(t.shPending); }
+  L.push('');
+  // score table (plain text)
+  L.push(t.shScores);
+  L.push(`MET  · ${t.labCSI} ${fmt(m.csi)} · ${t.labPOD} ${fmt(m.pod)} · ${t.labFAR} ${fmt(m.far)}`);
+  L.push(`${info.name.padEnd(4)} · ${t.labCSI} ${fmt(e.csi)} · ${t.labPOD} ${fmt(e.pod)} · ${t.labFAR} ${fmt(e.far)}`);
+  // amount (challenger only)
+  if(res.ecMAE!=null){ L.push(''); L.push(t.shAmount(info.name,res.ecMAE.toFixed(1),res.ecMAEn)); }
+  // maturity note
+  L.push('');
+  const scored=res.scored||0;
+  L.push(scored>0?t.shDays(scored):t.shNoData);
+  L.push('');
+  L.push(t.shFoot);
+  return L.join('\n');
+}
+function shareScorecard(){
+  if(!lastResult){ status(T().selectFirst,'err'); return; }
+  const txt=buildScorecardText();
+  const ov=$('#sharePrevOv'),body=$('#sharePrevBody');
+  body.textContent=txt; ov.dataset.text=txt;
+  ov.style.display='flex';
+}
+function closeSharePreview(){ $('#sharePrevOv').style.display='none'; }
+function sendSharePreview(){
+  const txt=$('#sharePrevOv').dataset.text||'';
+  closeSharePreview();
+  // real anchor (desktop blocks window.open); wa.me opens WhatsApp share sheet
+  const a=document.createElement('a');
+  a.href='https://wa.me/?text='+encodeURIComponent(txt);
+  a.target='_blank';a.rel='noopener';
+  document.body.appendChild(a);a.click();a.remove();
+}
+
+/* ===================== Excel export (native .xlsx, no library) =====================
+   Exports the CURRENTLY selected farm's full raw log — one row per date — with
+   every field a researcher needs to reproduce the scoring: MET's binary + period
+   calls, the challenger's mm + binary + periods (and which model), and the ERA5
+   actual mm + binary + periods. Numeric values kept as numbers so they compute
+   directly in Excel. Self-contained: builds the .xlsx zip in-browser. */
+function _crc32(buf){
+  let c,crc=0xFFFFFFFF;
+  for(let i=0;i<buf.length;i++){ c=(crc^buf[i])&0xFF; for(let k=0;k<8;k++) c=c&1?(c>>>1)^0xEDB88320:c>>>1; crc=(crc>>>8)^c; }
+  return (crc^0xFFFFFFFF)>>>0;
+}
+function _u32(n){ return [n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]; }
+function _u16(n){ return [n&255,(n>>>8)&255]; }
+/* Minimal ZIP (store, no compression) — enough for a small xlsx. */
+function _zipStore(files){
+  const enc=new TextEncoder();
+  let central=[],offset=0,out=[];
+  const push=arr=>{ for(const b of arr) out.push(b); };
+  const parts=files.map(f=>({name:f.name,data:enc.encode(f.data)}));
+  for(const f of parts){
+    const nameBytes=enc.encode(f.name), crc=_crc32(f.data), sz=f.data.length;
+    const local=[0x50,0x4b,0x03,0x04,20,0,0,0,0,0,0,0,0,0,..._u32(crc),..._u32(sz),..._u32(sz),..._u16(nameBytes.length),0,0];
+    push(local); push(nameBytes); push(f.data);
+    central.push({name:f.name,nameBytes,crc,sz,offset});
+    offset+=local.length+nameBytes.length+sz;
+  }
+  const cStart=offset; let cLen=0;
+  for(const c of central){
+    const rec=[0x50,0x4b,0x01,0x02,20,0,20,0,0,0,0,0,0,0,0,0,..._u32(c.crc),..._u32(c.sz),..._u32(c.sz),
+      ..._u16(c.nameBytes.length),0,0,0,0,0,0,0,0,0,0,0,0,..._u32(c.offset)];
+    push(rec); push(c.nameBytes); cLen+=rec.length+c.nameBytes.length;
+  }
+  const end=[0x50,0x4b,0x05,0x06,0,0,0,0,..._u16(central.length),..._u16(central.length),..._u32(cLen),..._u32(cStart),0,0];
+  push(end);
+  return new Uint8Array(out);
+}
+function _xmlEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+/* Build a sheet from an array-of-arrays. Numbers become numeric cells; else text. */
+function _sheetXml(aoa){
+  const colName=i=>{ let s='';i++;while(i>0){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26);} return s; };
+  let rows='';
+  aoa.forEach((row,r)=>{
+    let cells='';
+    row.forEach((v,c)=>{
+      const ref=colName(c)+(r+1);
+      if(v==null||v===''){ return; }
+      if(typeof v==='number' && isFinite(v)){ cells+=`<c r="${ref}"><v>${v}</v></c>`; }
+      else { cells+=`<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${_xmlEsc(v)}</t></is></c>`; }
+    });
+    rows+=`<row r="${r+1}">${cells}</row>`;
+  });
+  const last=aoa.length?`${_colLetter(aoa[0].length-1)}${aoa.length}`:'A1';
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`+
+    `<sheetData>${rows}</sheetData>`+
+    `<autoFilter ref="A1:${last}"/></worksheet>`;
+}
+function _colLetter(i){ let s='';i++;while(i>0){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26);} return s; }
+function buildXlsx(aoa,sheetName){
+  const files=[
+    {name:'[Content_Types].xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'},
+    {name:'_rels/.rels',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+    {name:'xl/workbook.xml',data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${_xmlEsc(sheetName).slice(0,31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`},
+    {name:'xl/_rels/workbook.xml.rels',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'},
+    {name:'xl/worksheets/sheet1.xml',data:_sheetXml(aoa)},
+  ];
+  return _zipStore(files);
+}
+function exportFarmXLS(){
+  const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted);
+  if(!loc){ status(T().selectFirst,'err'); return; }
+  const lg=state.log[loc.id]||{};
+  const dates=Object.keys(lg).sort();
+  if(!dates.length){ status(T().exportEmpty,'warn'); return; }
+  const info=challengerInfo();
+  const b=v=>v==null?'':v;                    // blank for null
+  const P=(p,k)=> (p&&p[k]!=null)?p[k]:'';    // period flag or blank
+  const header=['farm','lat','lon','met_town','date',
+    'met_rain','met_morning','met_afternoon','met_night',
+    'challenger_model','chal_rain','chal_mm','chal_morning','chal_afternoon','chal_night',
+    'actual_rain','actual_mm','act_morning','act_afternoon','act_night',
+    'rain_threshold_mm','truth_source'];
+  const town=loc.metTownChosen||nearestTown(+loc.lat,+loc.lon).town;
+  const th=getThresh();
+  const aoa=[header];
+  for(const d of dates){
+    const r=lg[d];
+    aoa.push([
+      loc.name, +loc.lat, +loc.lon, town, d,
+      b(r.met), P(r.metP,'morning'),P(r.metP,'afternoon'),P(r.metP,'night'),
+      r.ecModel||'ecmwf_ifs', b(r.ecmwf), r.ecmm==null?'':r.ecmm, P(r.ecP,'morning'),P(r.ecP,'afternoon'),P(r.ecP,'night'),
+      b(r.actual), r.actmm==null?'':r.actmm, P(r.actP,'morning'),P(r.actP,'afternoon'),P(r.actP,'night'),
+      th, 'ERA5'
+    ]);
+  }
+  const bytes=buildXlsx(aoa,'ModelDuel');
+  const safe=loc.name.replace(/[^\w\u4e00-\u9fa5-]+/g,'_').slice(0,40);
+  const fname=`modelduel_${safe}_${todayYMD()}.xlsx`;
+  const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=fname;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  status(T().exportDone(dates.length),'ok');
+}
+
+/* 6-cell time-of-day grid: MET vs ECMWF CSI in each of morning/afternoon/night.
+   Winning cell in each column is highlighted. Hidden until any period has data. */
+function renderPeriodGrid(periods){
+  const t=T(),el=$('#periodGrid');
+  if(!periods){ el.style.display='none'; return; }
+  const cols=[['morning','🌅',t.pMorning],['afternoon','☀️',t.pAfternoon],['night','🌙',t.pNight]];
+  // any data at all?
+  let anyData=false;
+  for(const [name] of cols){ const p=periods[name]; if(p&&((p.met&&p.met.csi!=null)||(p.ec&&p.ec.csi!=null))) anyData=true; }
+  if(!anyData){ el.style.display='none'; return; }
+  el.style.display='block';
+  const cell=(p,side)=>{
+    const s=p&&p[side];const v=s&&s.csi;
+    if(v==null) return '<td class="pg-cell na">–</td>';
+    // win if this side's csi strictly beats the other on the same period
+    const other=side==='met'?'ec':'met';
+    const ov=p[other]&&p[other].csi;
+    const win=(ov==null)||(v>ov+0.005);
+    return `<td class="pg-cell${win?' win':''}">${v.toFixed(2)}</td>`;
+  };
+  let h=`<div class="pg-title">${t.periodTitle}</div><table class="pg-table"><thead><tr><th></th>`+
+    cols.map(([n,ic,lab])=>`<th>${ic} ${lab}</th>`).join('')+`</tr></thead><tbody>`;
+  h+=`<tr><td class="pg-model met">MET</td>`+cols.map(([n])=>cell(periods[n],'met')).join('')+`</tr>`;
+  h+=`<tr><td class="pg-model ecmwf">${challengerInfo().name}</td>`+cols.map(([n])=>cell(periods[n],'ec')).join('')+`</tr>`;
+  h+=`</tbody></table><div class="pg-foot">${t.periodFoot}</div>`;
+  el.innerHTML=h;
+}
+
+/* ===================== render result ===================== */
+const fmt=x=>x==null?'–':x.toFixed(2);
+function renderResult(){
+  if(!lastResult) return;
+  const t=T(),res=lastResult;
+  $('#board-card').style.display='block';$('#log-card').style.display='block';
+  $('#board-loc').textContent=res.loc.name;
+  // MET-match banner: which MET location, how far, and a switch affordance
+  const mm=$('#metMatch');
+  const kmTxt=res.townKm!=null?`${res.townKm}km`:'';
+  const far=res.townKm!=null&&res.townKm>25;
+  mm.className='met-match'+(far?' far':'');
+  mm.innerHTML=`<span class="mm-left">${t.metVs} <span class="mm-town">${res.town}</span>`+
+    `${res.townChosen?' '+t.metManual:''} <span class="mm-km">${kmTxt}</span>`+
+    `${far?' · '+t.metFar:''}</span><span class="mm-switch">${t.metChange} ⇄</span>`;
+  const m=res.met,e=res.ecmwf;
+  // metric labels (Chinese in ZH mode, acronyms in EN mode)
+  $('#met-csi-lab').textContent=$('#ecmwf-csi-lab').textContent=t.labCSI;
+  $('#met-pod-lab').textContent=$('#ecmwf-pod-lab').textContent=t.labPOD;
+  $('#met-far-lab').textContent=$('#ecmwf-far-lab').textContent=t.labFAR;
+  $('#met-csi').textContent=fmt(m.csi);$('#ecmwf-csi').textContent=fmt(e.csi);
+  $('#met-pod').textContent=fmt(m.pod);$('#met-far').textContent=fmt(m.far);
+  $('#ecmwf-pod').textContent=fmt(e.pod);$('#ecmwf-far').textContent=fmt(e.far);
+  const cm=$('#crown-met'),ce=$('#crown-ecmwf');cm.style.display=ce.style.display='none';
+  const v=$('#verdict');
+  if(m.csi!=null&&e.csi!=null){
+    v.classList.remove('pending');
+    if(Math.abs(m.csi-e.csi)<0.005) v.innerHTML=t.verdictTie;
+    else if(m.csi>e.csi){cm.style.display='inline';v.innerHTML=t.verdictWin('MET Malaysia',fmt(m.csi),fmt(e.csi));}
+    else{ce.style.display='inline';v.innerHTML=t.verdictWin(challengerInfo().name,fmt(e.csi),fmt(m.csi));}
+  } else { v.classList.add('pending'); v.textContent=t.verdictPending; }
+  // ECMWF rainfall-amount accuracy (mm) — MET has no mm to compare
+  const ar=$('#amountRow');
+  if(res.ecMAE!=null){
+    ar.style.display='block';
+    ar.innerHTML=t.amountLine(res.ecMAE.toFixed(1), res.ecMAEn, challengerInfo().name);
+  } else { ar.style.display='none'; }
+  // Time-of-day grid: per-period CSI for MET vs ECMWF (MET's unique breakdown)
+  renderPeriodGrid(res.periods);
+  const mat=$('#maturity');
+  const scored=res.scored||0, pending=res.rows.length-scored;
+  const pendTxt=pending>0?' · '+t.matPending(pending):'';
+  if(scored===0) mat.innerHTML='⏳ '+t.matEmpty+pendTxt;
+  else if(scored<14)
+    mat.innerHTML='✓ '+t.matScored(scored)+pendTxt+' · '+t.matThin+
+      `<div class="bar"><span style="width:${Math.min(100,scored/14*100)}%"></span></div>`;
+  else mat.innerHTML='✓ '+t.matScored(scored)+pendTxt;
+  const pill=v=>v==null?'<span class="pill dry">–</span>':
+    v===1?`<span class="pill rain">${t.rain}</span>`:`<span class="pill dry">${t.dry}</span>`;
+  const mark=(fc,obs)=>(fc==null||obs==null)?'':fc===obs?'<span class="hit">✓</span>':'<span class="miss">✗</span>';
+  // MET's own morning/afternoon/night calls (its unique period breakdown).
+  // Small dots: filled = MET said rain, hollow = dry, faint dash = no data.
+  const metStrip=(mp)=>{
+    if(!mp) return '';
+    const dot=(v,ic)=>{
+      const cls=v==null?'ps-na':(v===1?'ps-rain':'ps-dry');
+      return `<span class="ps-dot ${cls}" title="${ic}">${ic}</span>`;
+    };
+    return `<div class="met-periods">${dot(mp.morning,'🌅')}${dot(mp.afternoon,'☀️')}${dot(mp.night,'🌙')}</div>`;
+  };
+  let h=`<table><thead><tr><th>${t.date}</th><th>${t.met}</th><th>${challengerInfo().name}</th><th>${t.actual}</th></tr></thead><tbody>`;
+  res.rows.forEach(r=>{h+=`<tr><td class="date">${r.date.slice(5)}${metStrip(r.metP)}</td>`+
+    `<td>${pill(r.met)} ${mark(r.met,r.obs)}</td><td>${pill(r.ecmwf)} ${mark(r.ecmwf,r.obs)}</td>`+
+    `<td>${pill(r.obs)}</td></tr>`;});
+  h+='</tbody></table>';
+  h+=`<div class="met-periods-legend">${t.metPeriodLegend}</div>`;
+  $('#log-body').innerHTML=h;
+  setLogCard(logCardOpen);   // keep body visibility in sync with collapse state
+}
+
+/* ===================== boot / wire ===================== */
+/* Ping the Worker: confirm it's live and report which coordinate source
+   it's currently serving (MET official vs built-in fallback table). */
+async function checkWorker(){
+  const t=T(),el=$('#workerStatus');
+  const base=(state.settings.metProxy||'').trim().replace(/\/+$/,'');
+  el.className='worker-status show warn';el.innerHTML=t.wsChecking;
+  if(!base){ el.className='worker-status show err';el.innerHTML=t.wsNoUrl;return; }
+  try{
+    const h=await fetch(`${base}/health`);
+    if(!h.ok) throw new Error('health '+h.status);
+    const hj=await h.json();
+    if(!hj.ok) throw new Error('unhealthy');
+    // probe coordinate source with a durian-belt sample (Raub)
+    let source='unknown',count=0;
+    try{
+      const n=await fetch(`${base}/nearest?lat=3.79&lon=101.86&n=3`);
+      if(n.ok){const nj=await n.json();source=nj.source||'unknown';count=nj.count||0;}
+    }catch(e){}
+    if(source==='met'){
+      el.className='worker-status show ok';
+      el.innerHTML=`<span class="ws-dot g"></span><b>${t.wsOnline}</b> · ${t.wsSrcMet}<br>${t.wsCount(count)}`;
+    }else if(source==='table'){
+      el.className='worker-status show warn';
+      el.innerHTML=`<span class="ws-dot a"></span><b>${t.wsOnline}</b> · ${t.wsSrcTable}<br>${t.wsCount(count)}`;
+    }else{
+      el.className='worker-status show warn';
+      el.innerHTML=`<span class="ws-dot a"></span><b>${t.wsOnline}</b> · ${t.wsSrcUnknown}`;
+    }
+  }catch(e){
+    el.className='worker-status show err';
+    el.innerHTML=`<span class="ws-dot r"></span><b>${t.wsOffline}</b><br>${t.wsHint}`;
+  }
+}
+function saveAutoLog(){
+  const v=$('#autoLog').value;
+  state.settings.autoLog=v;save();
+  // tell the user what a batch mode implies, right when they choose it
+  if(v==='all'||v.startsWith('region:')) status(T().autoBatchSet,'ok');
+}
+/* Rain threshold — single source of truth in settings. Default 2.5mm (the
+   classic "rainy day" definition), not 1mm which counts trace drizzle as rain. */
+const DEFAULT_THRESH=2.5;
+function getThresh(){
+  const v=parseFloat(state.settings.rainThresh);
+  return (v&&v>0)?v:DEFAULT_THRESH;
+}
+function saveThresh(){
+  const v=parseFloat($('#thresh').value);
+  state.settings.rainThresh=(v&&v>0)?v:DEFAULT_THRESH;save();
+  status(T().threshSaved(getThresh()),'ok');
+}
+/* Challenger model picker: which single model MET Malaysia duels against. */
+function populateChallengerOptions(){
+  const sel=$('#challenger');if(!sel)return;
+  const cur=challengerKey();
+  sel.innerHTML=CHALLENGERS.map(c=>
+    `<option value="${c.key}"${c.key===cur?' selected':''}>${c.country} ${c.full}</option>`).join('');
+}
+function saveChallenger(){
+  const v=$('#challenger').value;
+  if(!CHALLENGERS.some(c=>c.key===v))return;
+  state.settings.challenger=v;save();
+  applyChallengerLabels();
+  if(lastResult && activeLoc) runDuel();   // re-score under the new challenger
+  status(T().challengerSaved(challengerInfo().full),'ok');
+}
+/* Paint the chosen challenger's name into the scoreboard, subtitle, etc. */
+function applyChallengerLabels(){
+  const info=challengerInfo();
+  const nm=$('#ecmwf-name');if(nm)nm.textContent=info.name;
+  const sub=$('#t-sub');if(sub)sub.textContent=T().sub(info.name);
+}
+/* build the auto-log dropdown: off / active / each region / all */
+function populateAutoLogOptions(){
+  const t=T(),sel=$('#autoLog');if(!sel)return;
+  const cur=state.settings.autoLog||'off';
+  let html=`<option value="off">${t.alOff}</option>`+
+           `<option value="active">${t.alActive}</option>`;
+  for(const rgn of liveRegions())
+    html+=`<option value="region:${rgn.replace(/"/g,'')}">${t.alRegion(rgn)}</option>`;
+  html+=`<option value="all">${t.alAll}</option>`;
+  sel.innerHTML=html;
+  sel.value=cur;
+  if(sel.value!==cur) sel.value='off';   // chosen region no longer exists → off
+}
+/* manual: run drive-mode over the currently chosen scope right now */
+async function driveAllNow(){
+  if(driveRunning){ driveAbort=true; return; }  // tap again to stop
+  const thresh=getThresh();
+  const mode=state.settings.autoLog||'all';
+  let farms=state.locations.filter(l=>!l.deleted);
+  if(mode.startsWith('region:')){ const r=mode.slice(7); farms=farms.filter(l=>(l.region||'')===r); }
+  // 'off' or 'active' → default to all farms for a manual full run
+  if(!farms.length) farms=state.locations.filter(l=>!l.deleted);
+  await driveLog(farms,thresh);
+  stampLogDay();
+  renderLocList();
+}
+function openSettings(){
+  populateAutoLogOptions();
+  populateChallengerOptions();
+  if($('#thresh')) $('#thresh').value=getThresh();   // reflect stored threshold
+  $('#settingsModal').style.display='flex';
+  checkWorker();   // ping immediately so the status is fresh on open
+}
+function closeSettings(){ $('#settingsModal').style.display='none'; }
+function setLangDirect(l){
+  LANG=l;state.lang=LANG;save();
+  paintLabels();renderLocList();if(lastResult)renderResult();
+  updateLangSwitch();
+}
+function updateLangSwitch(){
+  const z=$('#langZh'),e=$('#langEn');
+  if(z)z.classList.toggle('on',LANG==='zh');
+  if(e)e.classList.toggle('on',LANG==='en');
+}
+$('#btnAdd').addEventListener('click',saveLoc);
+
+populateAutoLogOptions();
+paintLabels();renderLocList();updateLangSwitch();
+setLocCard(activeLocs().length===0);   // collapsed when seeds exist; open when empty
+// Returning user: restore their last-viewed farm's scorecard. First launch:
+// activeLoc is null, so nothing shows until they pick a farm.
+if(activeLoc){ runDuel(); } else { updateLocHint(); }
+/* fire-and-forget once-per-day auto-log; never blocks first paint */
+setTimeout(()=>{ autoLogOnOpen().catch(()=>{}); }, 400);
+
+/* Register the real service worker for offline support. Must be a file at the
+   site root (./sw.js) — a blob URL can't cache the app shell. */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  });
+}
+
+</script>
+</body>
+</html>
