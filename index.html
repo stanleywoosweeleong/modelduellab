@@ -536,7 +536,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260707-15';
+const CACHE_VERSION = 'modelduel-20260707-16';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -1125,7 +1125,7 @@ function renderLocList(){
   renderBin();
 }
 function setActiveLoc(id){ activeLoc=id; state.activeLoc=id||null; save(); }
-function selectLoc(id){setActiveLoc(id);renderLocList();updateLocHint();updateLogBtn();}
+function selectLoc(id){setActiveLoc(id);clearStatus();renderLocList();updateLocHint();updateLogBtn();}
 /* Toggle a region open/closed and swap its chevron glyph directly (WebView
    doesn't reliably render CSS rotate on the ▶ arrow, so we swap ▶↔▼). */
 function toggleRegion(el){
@@ -1353,6 +1353,7 @@ function status(msg,kind){
   const e=$('#status');e.innerHTML=msg;e.className='status show '+(kind||'');
   if(kind==='ok') setTimeout(()=>e.classList.remove('show'),3200);
 }
+function clearStatus(){ const e=$('#status'); if(e) e.classList.remove('show'); }
 
 /* ===================== live fetch ===================== */
 /* ---- MET forecast via Cloudflare Worker (CORS proxy).
@@ -1736,6 +1737,7 @@ function runDuel(){
   const t=T();
   const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted);
   if(!loc){status(t.selectFirst,'err');return;}
+  clearStatus();   // a farm is active now — clear any stale "pick a location" error
   const lg=state.log[loc.id]||{};
   const auto=nearestTown(+loc.lat,+loc.lon);
   const nt={ town: loc.metTownChosen||auto.town,
