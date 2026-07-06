@@ -1,7 +1,7 @@
 /* ModelDuel Lab — service worker. Precaches the app shell so it works fully
    offline. Network-first for the page (so new deploys are picked up when
    online), cache-first for static icons. Bump CACHE on every deploy. */
-const CACHE = 'modelduel-20260706-02';
+const CACHE = 'modelduel-20260706-13';
 const SHELL = [
   './',
   './index.html',
@@ -13,9 +13,15 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
+  // Precache the shell but DON'T auto-activate — wait so the app can show an
+  // "update ready" prompt. The page sends SKIP_WAITING when the user taps it.
   e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE).then((c) => c.addAll(SHELL))
   );
+});
+
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
