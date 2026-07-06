@@ -536,7 +536,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260706-13';
+const CACHE_VERSION = 'modelduel-20260707-15';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -871,6 +871,7 @@ const I18N={
     autoLogLabel:'每日自动记录（开启应用时）',
     autoRunning:(d,n)=>`驾驶模式记录中… ${d}/${n}`,autoDone:n=>`已记录 ${n} 个地点 ✓`,
     updateReady:'新版本已就绪',updateGo:'更新',
+    metMissNote:n=>`<br>⚠ 其中 ${n} 个地点暂无 MET 数据（Worker 目前仅覆盖部分 MET 城镇），已记录对手模型`,
     autoRunning2:(d,n,r)=>`驾驶模式记录中… ${d}/${n} · 剩 ${r}`,
     autoPaused:(d,n,r)=>`已暂停 · ${d}/${n} · 剩 ${r}（按继续恢复）`,
     drivePause:'暂停',driveResume:'继续',driveStop:'停止',
@@ -968,6 +969,7 @@ const I18N={
     autoLogLabel:'Auto-log daily (on open)',
     autoRunning:(d,n)=>`Drive mode… ${d}/${n}`,autoDone:n=>`Logged ${n} location(s) ✓`,
     updateReady:'New version ready',updateGo:'Update',
+    metMissNote:n=>`<br>⚠ ${n} of them have no MET data yet (Worker covers limited MET towns) — challenger logged`,
     autoRunning2:(d,n,r)=>`Drive mode… ${d}/${n} · ${r} left`,
     autoPaused:(d,n,r)=>`Paused · ${d}/${n} · ${r} left (tap Resume)`,
     drivePause:'Pause',driveResume:'Resume',driveStop:'Stop',
@@ -1541,7 +1543,7 @@ async function driveLog(farms, thresh){
   document.addEventListener("visibilitychange", onVis);
   await acquireWake();
 
-  let done=0, failed=0, skipped=0, idx=0;
+  let done=0, failed=0, skipped=0, idx=0, metMiss=0;
   const failedNames=[];
   const total=farms.length;
   const report=()=>{
@@ -1556,12 +1558,12 @@ async function driveLog(farms, thresh){
     // If paused, wait here (checking periodically) until resumed or stopped.
     while(drivePaused && !driveAbort){ await sleep(300); }
     if(driveAbort) break;
-    // skip farms whose log already covers today (resume-safe, no double fetch)
-    const lg=state.log[loc.id]||{};
-    if(lg[todayYMD()] && lg[todayYMD()].met!=null){ skipped++; report(); continue; }
+    // skip farms already logged today (MET or challenger captured) — same
+    // definition as the badge and coverage counter, so they never disagree
+    if(loggedTodayFor(loc.id)){ skipped++; report(); continue; }
     try{
       const res=await logOneFarm(loc,thresh);
-      if(res && res.gotToday) done++;
+      if(res && res.gotToday){ done++; if(!res.gotMet) metMiss++; }
       else { failed++; failedNames.push(loc.name); }
     }catch(e){ failed++; failedNames.push(loc.name); }
     report();
@@ -1579,9 +1581,12 @@ async function driveLog(farms, thresh){
   updateDriveIcon();
   if(activeLoc){ try{ runDuel(); }catch(_){} }
   if(rankCardOpen) renderRanking();
-  // No card anymore — the banner carries the result.
+  // No card anymore — the banner carries the result. Be honest about farms that
+  // logged only the challenger (MET has limited town coverage until the token).
+  const metNote = metMiss>0 ? t.metMissNote(metMiss) : '';
   if(driveAbort) status(t.autoStopped(done+skipped,farms.length),'warn');
-  else if(failed>0) status(t.autoDoneSome(done+skipped, farms.length, failed),'warn');
+  else if(failed>0) status(t.autoDoneSome(done+skipped, farms.length, failed)+metNote,'warn');
+  else if(metMiss>0) status(t.autoDone(done+skipped)+metNote,'warn');
   else status(t.autoDone(done+skipped),'ok');
   return {done,failed,skipped,failedNames};
 }
@@ -1604,7 +1609,7 @@ function driveScope(){
   if(mode.startsWith('region:')){ const r=mode.slice(7); scopeRegion=r;
     const rf=farms.filter(l=>(l.region||'')===r); if(rf.length) farms=rf; }
   const today=todayYMD();
-  const loggedCount=farms.filter(l=>{ const lg=state.log[l.id]||{}; return lg[today]&&lg[today].met!=null; }).length;
+  const loggedCount=farms.filter(l=>loggedTodayFor(l.id)).length;
   return {farms, total:farms.length, loggedCount, remaining:farms.length-loggedCount, scopeRegion};
 }
 /* Live progress goes to the status banner; the header icon reflects state
@@ -1655,11 +1660,9 @@ async function fetchRegion(btn){
   setBadge();
   for(const loc of farms){
     if(regionAbort) break;
-    const lg=state.log[loc.id]||{};
-    if(lg[todayYMD()] && lg[todayYMD()].met!=null){ skipped++; setBadge(); continue; }
-    try{ await logOneFarm(loc,thresh);
-      const r=state.log[loc.id];
-      if(r && Object.keys(r).length>0) done++; else { failed++; failedNames.push(loc.name); }
+    if(loggedTodayFor(loc.id)){ skipped++; setBadge(); continue; }
+    try{ const res=await logOneFarm(loc,thresh);
+      if(res && res.gotToday) done++; else { failed++; failedNames.push(loc.name); }
     }catch(e){ failed++; failedNames.push(loc.name); }
     setBadge();
     if(loc.id===activeLoc){ try{ runDuel(); }catch(_){} }
@@ -2178,10 +2181,12 @@ async function checkWorker(){
     if(!h.ok) throw new Error('health '+h.status);
     const hj=await h.json();
     if(!hj.ok) throw new Error('unhealthy');
-    // probe coordinate source with a durian-belt sample (Raub)
+    // True coverage: /towns reports every MET location the Worker can resolve.
+    // (Previously probed /nearest?n=3 and displayed its count — which is always
+    // 3, the size of the sample we asked for, not the coverage.)
     let source='unknown',count=0;
     try{
-      const n=await fetch(`${base}/nearest?lat=3.79&lon=101.86&n=3`);
+      const n=await fetch(`${base}/towns`);
       if(n.ok){const nj=await n.json();source=nj.source||'unknown';count=nj.count||0;}
     }catch(e){}
     if(source==='met'){
