@@ -536,7 +536,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260707-16';
+const CACHE_VERSION = 'modelduel-20260707-17';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -904,7 +904,7 @@ const I18N={
       '· 对手模型：ECMWF（欧洲）· DWD ICON（德国）· NOAA GFS（美国）· ECCC GEM（加拿大）· JMA（日本）· CMA（中国）\n'+
       '· 真值：ECMWF ERA5 再分析\n'+
       '· 模型与 ERA5 数据经由 Open-Meteo 提供（CC-BY 4.0）\n'+
-      '· 由 Claude Opus 4.8（Anthropic）协助开发'},
+      '· 由 Claude Opus 4.8 与 Claude Fable 5（Anthropic）协助开发'},
   en:{title:'ModelDuel Lab',sub:m=>`MET Malaysia 🆚 ${m}`,
     challengerLabel:'Challenger model (who MET duels)',challengerSaved:m=>`Challenger set to ${m}`,
     locs:'Pick location',setup:'Daily log',from:'From',to:'To',thresh:'Rain threshold (mm/day)',
@@ -1003,7 +1003,7 @@ const I18N={
       '· Challenger models: ECMWF (EU) · DWD ICON (Germany) · NOAA GFS (USA) · ECCC GEM (Canada) · JMA (Japan) · CMA (China)\n'+
       '· Truth: ECMWF ERA5 reanalysis\n'+
       '· Model & ERA5 data served via Open-Meteo (CC-BY 4.0)\n'+
-      '· Built with Claude Opus 4.8 (Anthropic)'}
+      '· Built with Claude Opus 4.8 and Claude Fable 5 (Anthropic)'}
 };
 const T=()=>I18N[LANG];
 
