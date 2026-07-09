@@ -236,6 +236,9 @@
   #log-body tr:last-child td{border-bottom:none}
   #log-body td.date{color:#e6ebf1}
   #log-body .met-periods-legend{color:#9aa8b8}
+  #log-body .today-star{color:#fff;font-size:.8rem;margin-left:6px;vertical-align:1px}
+  #log-body tr.today-row{background:rgba(255,255,255,0.06)}
+  #log-body tr.today-row td.date{color:#fff;font-weight:700}
   #log-body .hit{color:#4fd1a5}
   #log-body .miss{color:#ff8a8a}
   #log-body .ps-dot.ps-dry{background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.14)}
@@ -536,7 +539,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260707-17';
+const CACHE_VERSION = 'modelduel-20260707-18';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -2161,7 +2164,11 @@ function renderResult(){
     return `<div class="met-periods">${dot(mp.morning,'🌅')}${dot(mp.afternoon,'☀️')}${dot(mp.night,'🌙')}</div>`;
   };
   let h=`<table><thead><tr><th>${t.date}</th><th>${t.met}</th><th>${challengerInfo().name}</th><th>${t.actual}</th></tr></thead><tbody>`;
-  res.rows.forEach(r=>{h+=`<tr><td class="date">${r.date.slice(5)}${metStrip(r.metP)}</td>`+
+  const _today=todayYMD();
+  res.rows.forEach(r=>{
+    const isToday = r.date===_today;
+    const star = isToday ? '<span class="today-star">★</span>' : '';
+    h+=`<tr class="${isToday?'today-row':''}"><td class="date">${r.date.slice(5)}${star}${metStrip(r.metP)}</td>`+
     `<td>${pill(r.met)} ${mark(r.met,r.obs)}</td><td>${pill(r.ecmwf)} ${mark(r.ecmwf,r.obs)}</td>`+
     `<td>${pill(r.obs)}</td></tr>`;});
   h+='</tbody></table>';
