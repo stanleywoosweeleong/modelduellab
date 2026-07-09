@@ -539,7 +539,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260710-19';
+const CACHE_VERSION = 'modelduel-20260710-20';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -1446,6 +1446,7 @@ async function logOneFarm(loc, thresh){
   }catch(e){ if(String(e.message)==='no-proxy') noProxy=true; }
   // 2. Challenger model forecast (tag which model produced it, so switching
   //    challengers never mixes two models' data in one score)
+  let gotChal=false;
   try{
     const model=challengerKey();
     const ec=await fetchECMWFforecast(+loc.lat,+loc.lon,thresh);
@@ -1455,6 +1456,7 @@ async function logOneFarm(loc, thresh){
         lg[d].ecmwf=v.rain;lg[d].ecmm=v.mm;lg[d].ecP=v.periods;lg[d].ecModel=model;
       }
     }
+    gotChal=Object.keys(ec).length>0;
   }catch(e){}
   // 3. ERA5 actuals backfill (mature window)
   const dates=Object.keys(lg).sort();
@@ -1474,11 +1476,15 @@ async function logOneFarm(loc, thresh){
     }
   }
   loc.metTown=metTown;
-  // Did we capture anything for TODAY specifically? (truthful success signal —
-  // old log entries from previous days must not count as "logged today")
-  const today=todayYMD();
-  const tday=lg[today]||{};
-  const gotToday=(tday.met!=null)||(tday.ecmwf!=null);
+  // Success = THIS run actually fetched at least one source (MET or challenger).
+  // Presence of data under today's date key is NOT a success signal — forecasts
+  // are forward-looking, so yesterday's run already wrote today's key (that was
+  // the skip-everything bug).
+  const gotToday=gotMet||gotChal;
+  // Stamp the farm with the date this fetch RAN — the truth signal the skip
+  // logic / badge / coverage use. Only stamp on success, so a failed farm is
+  // retried by the next run.
+  if(gotToday) loc.lastFetch=todayYMD();
   return {gotMet,metTown,noProxy,gotToday};
 }
 
@@ -1905,8 +1911,8 @@ function switchActiveMet(){ if(activeLoc) openMetSwitch(activeLoc); }
    If so, de-emphasize it (today's done — the useful action is now re-score) and
    promote the re-score button to primary. */
 function loggedTodayFor(id){
-  const lg=state.log[id]||{}; const d=lg[todayYMD()];
-  return !!(d && (d.met!=null || d.ecmwf!=null));
+  const l=state.locations.find(x=>x.id===id&&!x.deleted);
+  return !!(l && l.lastFetch===todayYMD());
 }
 function updateLogBtn(){
   const t=T(), btn=$('#logBtn'), lbl=$('#t-logtoday'), reBtn=$('#reScoreBtn');
