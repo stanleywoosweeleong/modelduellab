@@ -539,7 +539,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260707-18';
+const CACHE_VERSION = 'modelduel-20260710-19';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -806,7 +806,11 @@ let editingId=null;
 let lastResult=state.lastResult||null;
 const $=s=>document.querySelector(s);
 const uid=()=>"U"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const iso=d=>d.toISOString().slice(0,10);
+/* Local calendar date in Malaysia (UTC+8). Using toISOString() here would give
+   the UTC date, which is a day behind before 08:00 MYT — that shifted "today"
+   to yesterday every early morning (wrong star row + drive skipping everything).
+   en-CA formats as YYYY-MM-DD, matching our storage keys. */
+const iso=d=>d.toLocaleDateString('en-CA',{timeZone:'Asia/Kuala_Lumpur'});
 
 /* ===================== i18n ===================== */
 const I18N={
