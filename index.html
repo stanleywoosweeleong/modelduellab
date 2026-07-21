@@ -388,18 +388,6 @@
 </header>
 <main>
   <div id="status" class="status"></div>
-  <!-- OLED-black drive overlay (battery-saving): big centered progress while a
-       batch run is active. Screen goes true-black; returns to light when done. -->
-  <div id="driveOverlay" aria-live="polite">
-    <div class="do-count" id="doCount">0/0</div>
-    <div class="do-label" id="doLabel">批量记录</div>
-    <div class="do-name" id="doName"></div>
-    <div class="do-dot"></div>
-    <div class="do-actions">
-      <button class="do-btn" id="doPause" onclick="drivePauseResume()">暂停</button>
-      <button class="do-btn ghost" onclick="driveStop()">停止</button>
-    </div>
-  </div>
   <div id="toast" class="toast"></div>
   <div id="drivePrompt" class="drive-prompt"></div>
 
@@ -568,6 +556,18 @@
     </div>
   </div>
 </main>
+<!-- OLED-black drive overlay — sibling of <main> (NOT inside it), so
+     body.drive-dark main{visibility:hidden} can't hide it via inheritance. -->
+<div id="driveOverlay" aria-live="polite">
+  <div class="do-count" id="doCount">0/0</div>
+  <div class="do-label" id="doLabel">批量记录</div>
+  <div class="do-name" id="doName"></div>
+  <div class="do-dot"></div>
+  <div class="do-actions">
+    <button class="do-btn" id="doPause" onclick="drivePauseResume()">暂停</button>
+    <button class="do-btn ghost" onclick="driveStop()">停止</button>
+  </div>
+</div>
 <script>
 /* ===================== ModelDuel Lab =====================
    Three-way verification: MET Malaysia (categorical) and ECMWF
@@ -576,7 +576,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260721-21';
+const CACHE_VERSION = 'modelduel-20260721-22';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
