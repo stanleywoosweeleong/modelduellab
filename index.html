@@ -257,6 +257,31 @@
   .status.warn{background:var(--warn-soft);color:#8a6314;border:1px solid #e9cf94}
   .ic{position:relative}
   .ic.drive-active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  /* OLED-black drive theme: true #000 turns off OLED pixels for real battery
+     saving, blanks the scrolling content, shows only the centered progress. */
+  body.drive-dark{background:#000}
+  body.drive-dark header{background:#000;border-color:#1a1a1a;z-index:70}
+  body.drive-dark header *{color:#c7ccd1 !important}
+  body.drive-dark main{visibility:hidden}
+  body.drive-dark *{transition:none !important}
+  #driveOverlay{position:fixed;inset:0;z-index:60;display:none;background:#000;
+    flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    padding:24px;text-align:center;padding-top:calc(env(safe-area-inset-top) + 72px)}
+  body.drive-dark #driveOverlay{display:flex}
+  #driveOverlay .do-count{font-size:64px;font-weight:900;letter-spacing:-1px;
+    color:#e8eaed;font-variant-numeric:tabular-nums;line-height:1}
+  #driveOverlay .do-label{font-size:15px;font-weight:700;color:#7a828c;letter-spacing:.3px}
+  #driveOverlay .do-name{font-size:13px;color:#5a616b;max-width:80%;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #driveOverlay .do-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+    animation:drivePulse 1.4s ease-in-out infinite;margin:2px 0 6px}
+  #driveOverlay .do-actions{display:flex;gap:12px;margin-top:8px}
+  #driveOverlay .do-btn{background:#1c2530;color:#e8eaed;border:1px solid #2a3542;
+    border-radius:10px;padding:11px 26px;font-size:.9rem;font-weight:700;cursor:pointer}
+  #driveOverlay .do-btn.ghost{background:transparent;color:#8a929c}
+  #driveOverlay .do-btn:active{opacity:.7}
+  @keyframes drivePulse{0%,100%{opacity:1}50%{opacity:.35}}
+  #btnDrive.drive-active svg{animation:drivePulse 1.4s ease-in-out infinite}
   .ic.drive-paused{background:var(--warn-soft);color:#8a6314;border-color:#e9cf94}
   .ic-badge{position:absolute;top:-5px;right:-5px;background:var(--met);color:#fff;
     font-size:.58rem;font-weight:700;min-width:16px;height:16px;line-height:16px;
@@ -363,6 +388,18 @@
 </header>
 <main>
   <div id="status" class="status"></div>
+  <!-- OLED-black drive overlay (battery-saving): big centered progress while a
+       batch run is active. Screen goes true-black; returns to light when done. -->
+  <div id="driveOverlay" aria-live="polite">
+    <div class="do-count" id="doCount">0/0</div>
+    <div class="do-label" id="doLabel">批量记录</div>
+    <div class="do-name" id="doName"></div>
+    <div class="do-dot"></div>
+    <div class="do-actions">
+      <button class="do-btn" id="doPause" onclick="drivePauseResume()">暂停</button>
+      <button class="do-btn ghost" onclick="driveStop()">停止</button>
+    </div>
+  </div>
   <div id="toast" class="toast"></div>
   <div id="drivePrompt" class="drive-prompt"></div>
 
@@ -539,7 +576,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260710-20';
+const CACHE_VERSION = 'modelduel-20260721-21';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -1541,6 +1578,7 @@ async function driveLog(farms, thresh){
   if(!farms.length){ return; }
   const t=T();
   driveRunning=true; driveAbort=false; drivePaused=false;
+  document.body.classList.add('drive-dark');   // OLED-black battery-saving theme
 
   // Keep the screen awake for the whole run. iOS drops the wake lock whenever the
   // page is hidden and does NOT auto-reacquire — so re-request on every visibility gain.
@@ -1575,6 +1613,7 @@ async function driveLog(farms, thresh){
     // skip farms already logged today (MET or challenger captured) — same
     // definition as the badge and coverage counter, so they never disagree
     if(loggedTodayFor(loc.id)){ skipped++; report(); continue; }
+    driveShowName(loc.name);   // show which farm is fetching on the overlay
     try{
       const res=await logOneFarm(loc,thresh);
       if(res && res.gotToday){ done++; if(!res.gotMet) metMiss++; }
@@ -1588,6 +1627,7 @@ async function driveLog(farms, thresh){
   }
 
   driveRunning=false; drivePaused=false; _driveProgress=null;
+  document.body.classList.remove('drive-dark');   // back to light theme when done
   document.removeEventListener("visibilitychange", onVis);
   try{ if(wake) await wake.release(); }catch(_){}
   wake=null;
@@ -1638,9 +1678,15 @@ function driveReport(processed,total){
     const stopLink=` &nbsp;<a class="status-act" onclick="driveStop()">${t.driveStop}</a>`;
     if(drivePaused) status(t.autoPaused(d,n,n-d)+stopLink,'warn');
     else status(t.autoRunning2(d,n,n-d)+stopLink,'warn');
+    // feed the OLED overlay
+    const c=$('#doCount'); if(c) c.textContent=`${d}/${n}`;
+    const lb=$('#doLabel'); if(lb) lb.textContent=drivePaused?t.autoPaused(d,n,n-d).split('·')[0].trim():t.driveTitle;
+    const pb=$('#doPause'); if(pb) pb.textContent=drivePaused?t.driveResume:t.drivePause;
   }
   updateDriveIcon();
 }
+/* Show the current farm name on the overlay while it fetches. */
+function driveShowName(name){ const el=$('#doName'); if(el) el.textContent=name||''; }
 function updateDriveIcon(){
   const btn=$('#btnDrive'), badge=$('#driveBadge');
   if(!btn) return;

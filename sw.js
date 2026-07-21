@@ -1,7 +1,7 @@
 /* ModelDuel Lab — service worker. Precaches the app shell so it works fully
    offline. Network-first for the page (so new deploys are picked up when
    online), cache-first for static icons. Bump CACHE on every deploy. */
-const CACHE = 'modelduel-20260710-20';
+const CACHE = 'modelduel-20260721-21';
 const SHELL = [
   './',
   './index.html',
