@@ -576,7 +576,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260721-22';
+const CACHE_VERSION = 'modelduel-20260722-23';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -867,7 +867,7 @@ const I18N={
     metSrcOfficial:'坐标来源：MET 官方',metSrcTable:'坐标来源：内置表（近似）',
     metSwitched:n=>`已改用 MET：${n}`,metVs:'对比',metManual:'（手动）',
     metFar:'距离较远，结果仅供参考',metChange:'更换',
-    rank:'跨农场排名',rankMetWins:'MET 胜',rankEcWins:'ECMWF 胜',rankTies:'打平',rankTie:'平',
+    rank:'跨农场排名',rankMetWins:'MET 胜',rankEcWins:n=>`${n} 胜`,rankTies:'打平',rankTie:'平',
     rankHint:n=>`${n} 个农场已评分`,rankEmpty:'尚无已评分的农场 · 记录几天后再看',
     rankPending:n=>`${n} 个农场待实测回填`,
     selectFirst:'请先选择一个地点',tapToSelect:'点击选择果园 ▾',
@@ -965,7 +965,7 @@ const I18N={
     metSrcOfficial:'Coordinates: MET official',metSrcTable:'Coordinates: built-in table (approx.)',
     metSwitched:n=>`Now using MET: ${n}`,metVs:'vs',metManual:'(manual)',
     metFar:'far — results indicative only',metChange:'Change',
-    rank:'Cross-farm ranking',rankMetWins:'MET wins',rankEcWins:'ECMWF wins',rankTies:'Ties',rankTie:'Tie',
+    rank:'Cross-farm ranking',rankMetWins:'MET wins',rankEcWins:n=>`${n} wins`,rankTies:'Ties',rankTie:'Tie',
     rankHint:n=>`${n} farms scored`,rankEmpty:'No scored farms yet · check back after logging a few days',
     rankPending:n=>`${n} farms awaiting ERA5 backfill`,
     selectFirst:'Pick a location first',tapToSelect:'Tap to pick a farm ▾',
@@ -1857,18 +1857,23 @@ function amountMAE(rows){
 }
 
 /* ===================== cross-farm ranking ===================== */
-/* Score one farm from its log (dates with a real actual only). */
+/* Score one farm from its log (dates with a real actual only).
+   MUST mirror runDuel's rules exactly, or the ranking and the scorecard
+   disagree: (1) only count challenger data captured by the CURRENTLY selected
+   model; (2) re-derive rain/dry from stored mm at the CURRENT threshold. */
 function scoreFarm(loc){
   const lg=state.log[loc.id]||{};
+  const th=getThresh(), model=challengerKey();
+  const bin=(mm,stored)=> mm==null ? (stored==null?null:stored) : (mm>=th?1:0);
   const pairsMet=[],pairsEc=[];
   for(const d of Object.keys(lg)){
-    const a=lg[d].actual; if(a==null) continue;
+    const a=bin(lg[d].actmm, lg[d].actual); if(a==null) continue;
+    const match=(lg[d].ecModel||'ecmwf_ifs')===model;
     pairsMet.push({fc:lg[d].met==null?null:lg[d].met,obs:a});
-    pairsEc.push({fc:lg[d].ecmwf==null?null:lg[d].ecmwf,obs:a});
+    pairsEc.push({fc:match?bin(lg[d].ecmm,lg[d].ecmwf):null,obs:a});
   }
   const met=score(pairsMet),ec=score(pairsEc);
-  const scored=Math.max(met.n?met.H+met.M+met.F+met.C:0, pairsMet.filter(p=>p.obs!=null).length);
-  return {loc,met,ec,scored:pairsMet.filter(p=>p.obs!=null).length};
+  return {loc,met,ec,scored:pairsMet.length};
 }
 
 let logCardOpen=true;   // day-by-day fetch log: expanded by default (verify app works at a glance)
@@ -1912,7 +1917,7 @@ function renderRanking(){
   $('#rankSummary').innerHTML=
     `<div class="rs-box met"><div class="rs-n">${metWins}</div><div class="rs-lab">${t.rankMetWins}</div></div>`+
     `<div class="rs-box tie"><div class="rs-n">${ties}</div><div class="rs-lab">${t.rankTies}</div></div>`+
-    `<div class="rs-box ecmwf"><div class="rs-n">${ecWins}</div><div class="rs-lab">${t.rankEcWins}</div></div>`;
+    `<div class="rs-box ecmwf"><div class="rs-n">${ecWins}</div><div class="rs-lab">${t.rankEcWins(challengerInfo().name)}</div></div>`;
   $('#rankHint').textContent=scored.length?t.rankHint(scored.length):'';
 
   let html='';
