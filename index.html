@@ -236,6 +236,7 @@
   #log-body tr:last-child td{border-bottom:none}
   #log-body td.date{color:#e6ebf1}
   #log-body .met-periods-legend{color:#9aa8b8}
+  #log-body .trace-mark{color:#e8c66a;font-weight:700;font-size:.85rem}
   #log-body .today-star{color:#fff;font-size:.8rem;margin-left:6px;vertical-align:1px}
   #log-body tr.today-row{background:rgba(255,255,255,0.06)}
   #log-body tr.today-row td.date{color:#fff;font-weight:700}
@@ -576,7 +577,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260722-23';
+const CACHE_VERSION = 'modelduel-20260722-24';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -898,6 +899,7 @@ const I18N={
     matThin:'样本偏少，评分仅供参考（建议 ≥14 天）',
     matScored:n=>`已评分 ${n} 天（有实测）`,matPending:n=>`${n} 天待实测回填`,logRows:n=>`${n} 天记录`,
     metPeriodLegend:'日期下方 🌅早 ☀️午 🌙夜＝MET 分时段预报：实心＝该时段预报有雨，淡色＝无雨，虚线＝无资料。（MET 独有的分时段数据）',
+    traceLegend:'≈＝实测微雨（0–门槛之间，阴天毛毛雨）：当天双方都不计分，公平排除',
     matEmpty:'尚无可评分数据 · 每天记录，5 天后 ERA5 实测回填',
     introTitle:'这是一个长期实验',
     introBody:'每天打开 App 记录一次预报。实测雨量（ERA5）约 <b>5 天后</b>才回填，所以最快第 5-6 天才会出现第一个分数。<br>约 <b>2 周</b>后（≥14 天）分数开始有参考价值，<b>3 周</b>后（约 20 天）才够可信。请每天坚持记录 🌱',
@@ -996,6 +998,7 @@ const I18N={
     matThin:'Small sample — indicative only (aim ≥14 days)',
     matScored:n=>`${n} days scored (with actuals)`,matPending:n=>`${n} awaiting ERA5 backfill`,logRows:n=>`${n} days logged`,
     metPeriodLegend:'Under each date, 🌅morn ☀️aft 🌙night = MET\'s per-period forecast: filled = rain forecast for that period, faint = dry, dashed = no data. (MET\'s unique time-of-day breakdown.)',
+    traceLegend:'≈ = trace rain (between 0 and the threshold — dark-sky drizzle): that day is excluded from BOTH models\' scores, symmetrically',
     matEmpty:'No scorable data yet · log daily; ERA5 actuals backfill after 5 days',
     introTitle:'This is a long-term experiment',
     introBody:'Open the app once a day and log the forecast. Actual rain (ERA5) backfills about <b>5 days later</b>, so your first score appears on day 5-6 at the earliest.<br>Scores become <b>indicative after ~2 weeks</b> (≥14 days) and <b>trustworthy after ~3 weeks</b> (~20 days). Keep logging daily 🌱',
@@ -1813,13 +1816,22 @@ function runDuel(){
     // only count challenger data captured by the CURRENTLY selected model;
     // days logged under a different challenger are ignored for its columns
     const match=(lg[d].ecModel||'ecmwf_ifs')===model;
+    const met=lg[d].met==null?null:lg[d].met;
+    const actmm=lg[d].actmm==null?null:lg[d].actmm;
+    // Trace-rain day: some rain fell but below the threshold (0 < mm < th).
+    // In Malaysia that's a dark-sky drizzle day — ambiguous for a rain/dry
+    // duel, so the WHOLE day is excluded from BOTH models' scores
+    // (symmetric: neither side may be punished or excused alone).
+    // Still displayed in the table, marked ≈.
+    const trace=(actmm!=null && actmm>0 && actmm<th);
     return {
       date:d,
-      obs: bin(lg[d].actmm, lg[d].actual),
-      met: lg[d].met==null?null:lg[d].met,
+      obs: bin(actmm, lg[d].actual),
+      met,
+      trace,
       ecmwf: match? bin(lg[d].ecmm, lg[d].ecmwf) : null,
       ecmm: match&&lg[d].ecmm!=null?lg[d].ecmm:null,
-      actmm:lg[d].actmm==null?null:lg[d].actmm,
+      actmm,
       metP:lg[d].metP||null, ecP: match?(lg[d].ecP||null):null, actP:lg[d].actP||null
     };
   });
@@ -1868,6 +1880,9 @@ function scoreFarm(loc){
   const pairsMet=[],pairsEc=[];
   for(const d of Object.keys(lg)){
     const a=bin(lg[d].actmm, lg[d].actual); if(a==null) continue;
+    // Trace-rain day (0<mm<th): ambiguous drizzle — the whole day is excluded
+    // from BOTH models' scores (same symmetric rule as runDuel).
+    if(lg[d].actmm!=null && lg[d].actmm>0 && lg[d].actmm<th) continue;
     const match=(lg[d].ecModel||'ecmwf_ifs')===model;
     pairsMet.push({fc:lg[d].met==null?null:lg[d].met,obs:a});
     pairsEc.push({fc:match?bin(lg[d].ecmm,lg[d].ecmwf):null,obs:a});
@@ -1945,12 +1960,15 @@ function jumpToFarm(id){
 }
 
 function finishDuel(loc,nt,rows,isDemo){
-  const scored=rows.filter(r=>r.obs!=null).length;   // dates with a real actual
+  // Trace days (0<mm<th) are ambiguous drizzle — excluded from BOTH models'
+  // scores and from the scored count. Amount MAE keeps them (amount-based,
+  // no ambiguity there).
+  const scored=rows.filter(r=>r.obs!=null && !r.trace).length;
   const amt=amountMAE(rows);
   lastResult={loc:{name:loc.name},town:nt.town,townKm:(nt.km!=null?nt.km:null),
     townChosen:!!nt.chosen,rows,scored,
-    met:score(rows.map(r=>({fc:r.met,obs:r.obs}))),
-    ecmwf:score(rows.map(r=>({fc:r.ecmwf,obs:r.obs}))),
+    met:score(rows.map(r=>({fc:r.trace?null:r.met,obs:r.obs}))),
+    ecmwf:score(rows.map(r=>({fc:r.trace?null:r.ecmwf,obs:r.obs}))),
     ecMAE:amt.mae, ecMAEn:amt.n, periods:scorePeriods(rows), isDemo};
   state.lastResult=lastResult;save();
   renderResult();
@@ -2213,7 +2231,8 @@ function renderResult(){
   else mat.innerHTML='✓ '+t.matScored(scored)+pendTxt;
   const pill=v=>v==null?'<span class="pill dry">–</span>':
     v===1?`<span class="pill rain">${t.rain}</span>`:`<span class="pill dry">${t.dry}</span>`;
-  const mark=(fc,obs)=>(fc==null||obs==null)?'':fc===obs?'<span class="hit">✓</span>':'<span class="miss">✗</span>';
+  const mark=(fc,obs,trace)=>trace?(fc==null?'':'<span class="trace-mark">≈</span>')
+    :(fc==null||obs==null)?'':fc===obs?'<span class="hit">✓</span>':'<span class="miss">✗</span>';
   // MET's own morning/afternoon/night calls (its unique period breakdown).
   // Small dots: filled = MET said rain, hollow = dry, faint dash = no data.
   const metStrip=(mp)=>{
@@ -2230,10 +2249,11 @@ function renderResult(){
     const isToday = r.date===_today;
     const star = isToday ? '<span class="today-star">★</span>' : '';
     h+=`<tr class="${isToday?'today-row':''}"><td class="date">${r.date.slice(5)}${star}${metStrip(r.metP)}</td>`+
-    `<td>${pill(r.met)} ${mark(r.met,r.obs)}</td><td>${pill(r.ecmwf)} ${mark(r.ecmwf,r.obs)}</td>`+
+    `<td>${pill(r.met)} ${mark(r.met,r.obs,r.trace)}</td><td>${pill(r.ecmwf)} ${mark(r.ecmwf,r.obs,r.trace)}</td>`+
     `<td>${pill(r.obs)}</td></tr>`;});
   h+='</tbody></table>';
   h+=`<div class="met-periods-legend">${t.metPeriodLegend}</div>`;
+  if(res.rows.some(r=>r.trace)) h+=`<div class="met-periods-legend">${t.traceLegend}</div>`;
   $('#log-body').innerHTML=h;
   setLogCard(logCardOpen);   // keep body visibility in sync with collapse state
 }
