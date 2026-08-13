@@ -577,7 +577,7 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260722-24';
+const CACHE_VERSION = 'modelduel-20260813-25';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -621,16 +621,14 @@ function nearestTown(lat,lon){
   return {town:best.town,km:Math.round(bd)};
 }
 
-/* MET categorical forecast (BM/EN) -> rain(1)/dry(0)/unknown(null) */
-function metCatToRain(txt){
-  if(!txt) return null;
-  const s=txt.toLowerCase();
-  const rain=['ribut petir','thunderstorm','hujan','rain','shower','renyai','storm'];
-  const dry =['tiada hujan','no rain','berjerebu','cerah','fair','sunny','clear','berawan','cloudy','tiada'];
-  for(const w of rain) if(s.includes(w)) return 1;
-  for(const w of dry)  if(s.includes(w)) return 0;
-  return null;
-}
+/* NOTE: a local metCatToRain() used to live here. It was dead code — the rain
+   flags come from the MET Worker, which does this mapping server-side — and it
+   had silently drifted out of agreement with the Worker: it tested the RAIN
+   words first, so "Tiada hujan" (no rain) matched 'hujan' and returned RAIN —
+   the exact inversion the Worker checks dry-words-first to avoid. A wrong copy
+   that nothing calls is still a trap for the next person reading this file, so
+   it is deleted rather than fixed. The Worker's catToRain() is the only
+   implementation; if the mapping needs changing, change it there. */
 
 /* contingency -> POD / FAR / CSI (null-honest, RainScore convention) */
 function score(pairs){
@@ -797,7 +795,7 @@ const CHALLENGERS=[
   {key:'icon_seamless',   name:'ICON',   full:'DWD ICON 11km',   country:'🇩🇪'},
   {key:'gfs_seamless',    name:'GFS',    full:'NOAA GFS',        country:'🇺🇸'},
   {key:'gem_seamless',    name:'GEM',    full:'ECCC GEM',        country:'🇨🇦'},
-  {key:'jma_seamless',    name:'JMA',    full:'JMA GSM',         country:'🇯🇵'},
+  {key:'jma_seamless',    name:'JMA',    full:'JMA Seamless (GSM+MSM)', country:'🇯🇵'},
   {key:'cma_grapes_global',name:'CMA',   full:'CMA GRAPES',      country:'🇨🇳'},
 ];
 const DEFAULT_CHALLENGER='ecmwf_ifs';
@@ -907,12 +905,16 @@ const I18N={
     loggedTodayBtn:'今日已记录 ✓（可重新评分）',reLog:'重新记录今日',
     loggedOk:t=>`已记录 · MET: ${t}`,loggedNoMet:'已记录 ECMWF（MET 无数据/未设代理）',
     noProxy:'未设 MET 代理网址，仅记录 ECMWF。见设置。',
+    metStale:d=>`⚠ MET 预报似乎未更新（最新一天为 ${d}，已过期）——本次不记录 MET，以免用旧预报评分。`,
+    loggedNoChal:'已记录 MET（挑战者模型无回应，本次未记录）',
+    loggedNothing:'⚠ 两个来源都没有取到数据——本次未记录任何预报。',
     setProxy:'MET 代理网址 (Cloudflare Worker)',proxySaved:'已保存代理网址',
     proxyCheck:'检查连线',advanced:'高级设置',langLabel:'语言 / Language',
     wsChecking:'检查中…',wsNoUrl:'请先填写代理网址',
     wsOnline:'Worker 在线',wsOffline:'无法连线到 Worker',
     wsSrcMet:'坐标来源：MET 官方 ✓',wsSrcTable:'坐标来源：内置表（近似）',
     wsSrcUnknown:'坐标来源未知',wsCount:n=>`可对比 ${n} 个 MET 地点`,
+    wsMix:o=>`来源明细：MET ${o.met||0} · 内置表 ${o.table||0} · 地理编码 ${o.geo||0}`,
     wsHint:'请检查网址是否正确、Worker 是否已部署。',
     autoLogLabel:'每日自动记录（开启应用时）',
     autoRunning:(d,n)=>`驾驶模式记录中… ${d}/${n}`,autoDone:n=>`已记录 ${n} 个地点 ✓`,
@@ -1006,12 +1008,16 @@ const I18N={
     loggedTodayBtn:'Logged today ✓ (re-score below)',reLog:'Re-log today',
     loggedOk:t=>`Logged · MET: ${t}`,loggedNoMet:'Logged ECMWF (no MET data / proxy unset)',
     noProxy:'No MET proxy URL set — logging ECMWF only. See Settings.',
+    metStale:d=>`⚠ MET forecast looks out of date (newest day ${d}) — MET not logged this run, so an old forecast can't be scored as today's.`,
+    loggedNoChal:'Logged MET (challenger model did not respond — nothing logged for it)',
+    loggedNothing:'⚠ Neither source returned data — nothing was logged this run.',
     setProxy:'MET proxy URL (Cloudflare Worker)',proxySaved:'Proxy URL saved',
     proxyCheck:'Check connection',advanced:'Advanced',langLabel:'语言 / Language',
     wsChecking:'Checking…',wsNoUrl:'Enter a proxy URL first',
     wsOnline:'Worker online',wsOffline:'Cannot reach Worker',
     wsSrcMet:'Coordinates: MET official ✓',wsSrcTable:'Coordinates: built-in table (approx.)',
     wsSrcUnknown:'Coordinate source unknown',wsCount:n=>`${n} MET locations available`,
+    wsMix:o=>`Breakdown: MET ${o.met||0} · table ${o.table||0} · geocoded ${o.geo||0}`,
     wsHint:'Check the URL is correct and the Worker is deployed.',
     autoLogLabel:'Auto-log daily (on open)',
     autoRunning:(d,n)=>`Drive mode… ${d}/${n}`,autoDone:n=>`Logged ${n} location(s) ✓`,
@@ -1411,13 +1417,25 @@ async function fetchMETviaProxy(lat,lon,chosenTown){
   const q=chosenTown?`town=${encodeURIComponent(chosenTown)}&lat=${lat}&lon=${lon}`:`lat=${lat}&lon=${lon}`;
   const r=await fetchRetry(`${base}/forecast?${q}`);
   if(!r.ok) throw new Error('proxy '+r.status);
-  const j=await r.json();               // { town, km, days:[{date,rain,morning,afternoon,night}] }
+  const j=await r.json();               // { town, km, newest_date, days:[{date,rain,...}] }
   const met={},metP={};
   (j.days||[]).forEach(d=>{
     met[d.date]=d.rain;
     metP[d.date]={morning:d.morning??null,afternoon:d.afternoon??null,night:d.night??null};
   });
-  return {town:j.town,km:(j.km!=null?j.km:null),met,metP,matched:j.matched_rows||0};
+  // FRESHNESS GATE. matched_rows>0 only says the location NAME matched — it says
+  // nothing about WHEN those rows are for. If data.gov.my freezes, the Worker
+  // keeps returning last week's rows, matched_rows stays >0, and this used to
+  // report success. Nothing gets written either (the met==null guard protects
+  // earlier captures), so the run looked healthy while capturing no new MET
+  // forecast at all. A forecast feed must contain at least one day from today
+  // onward to be current.
+  const dates=Object.keys(met).sort();
+  const newest=j.newest_date||(dates.length?dates[dates.length-1]:null);
+  if(dates.length && (!newest || newest<todayYMD())){
+    const e=new Error('stale-met'); e.newest=newest; throw e;
+  }
+  return {town:j.town,km:(j.km!=null?j.km:null),met,metP,matched:j.matched_rows||0,newest};
 }
 /* Time-of-day windows (local KL hours). MET splits the day into these three
    periods; we bin ECMWF/ERA5 hourly rainfall into the same windows to compare. */
@@ -1473,6 +1491,7 @@ async function fetchERA5actuals(lat,lon,from,to,thresh){
 async function logOneFarm(loc, thresh){
   const lg=logFor(loc.id);
   let gotMet=false, metTown=loc.metTownChosen||nearestTown(+loc.lat,+loc.lon).town, noProxy=false;
+  let metStale=null, chalFailed=false;
   // 1. MET forecast (via proxy), honoring a user-chosen MET location
   try{
     const m=await fetchMETviaProxy(+loc.lat,+loc.lon,loc.metTownChosen);
@@ -1483,7 +1502,12 @@ async function logOneFarm(loc, thresh){
       if(lg[d].metP==null && m.metP && m.metP[d]) lg[d].metP=m.metP[d];   // MET periods
     }
     gotMet=m.matched>0;
-  }catch(e){ if(String(e.message)==='no-proxy') noProxy=true; }
+  }catch(e){
+    if(String(e.message)==='no-proxy') noProxy=true;
+    // A stale MET feed is reported separately from a dead one: the network is
+    // fine, the data is not, and the user needs to know which.
+    else if(String(e.message)==='stale-met') metStale=e.newest||'?';
+  }
   // 2. Challenger model forecast (tag which model produced it, so switching
   //    challengers never mixes two models' data in one score)
   let gotChal=false;
@@ -1497,7 +1521,13 @@ async function logOneFarm(loc, thresh){
       }
     }
     gotChal=Object.keys(ec).length>0;
-  }catch(e){}
+  }catch(e){
+    // Was a bare catch{}. A challenger that stops responding — Open-Meteo
+    // retiring a model id, say — then produced no message anywhere and the
+    // column simply stopped filling. Surface it instead.
+    chalFailed=true;
+    console.warn('challenger fetch failed:', e && e.message);
+  }
   // 3. ERA5 actuals backfill (mature window)
   const dates=Object.keys(lg).sort();
   if(dates.length){
@@ -1521,11 +1551,12 @@ async function logOneFarm(loc, thresh){
   // are forward-looking, so yesterday's run already wrote today's key (that was
   // the skip-everything bug).
   const gotToday=gotMet||gotChal;
+  if(metStale) console.warn('MET feed stale — newest day', metStale, '(not logged)');
   // Stamp the farm with the date this fetch RAN — the truth signal the skip
   // logic / badge / coverage use. Only stamp on success, so a failed farm is
   // retried by the next run.
   if(gotToday) loc.lastFetch=todayYMD();
-  return {gotMet,metTown,noProxy,gotToday};
+  return {gotMet,metTown,noProxy,gotToday,metStale,chalFailed};
 }
 
 /* ===================== LOG TODAY (manual, active farm, with UI) ============== */
@@ -1536,10 +1567,15 @@ async function logToday(){
   const thresh=getThresh();
   status(t.logging,'warn');$('#logBtn').disabled=true;
   try{
-    const {gotMet,metTown,noProxy}=await logOneFarm(loc,thresh);
+    const {gotMet,metTown,noProxy,metStale,chalFailed,gotToday}=await logOneFarm(loc,thresh);
     stampLogDay();save();
     runDuel();
+    // Report the weakest link, not just the happy path: a run that captured
+    // nothing must not read the same as a run that captured everything.
     if(noProxy) status(t.noProxy,'warn');
+    else if(metStale) status(t.metStale(metStale),'err');
+    else if(!gotToday) status(t.loggedNothing,'err');
+    else if(gotMet&&chalFailed) status(t.loggedNoChal,'warn');
     else status(gotMet?t.loggedOk(metTown):t.loggedNoMet,'ok');
   }catch(e){status(t.errNet,'err');}
   finally{$('#logBtn').disabled=false;}
@@ -1814,7 +1850,11 @@ function runDuel(){
   const bin=(mm,stored)=> mm==null ? (stored==null?null:stored) : (mm>=th?1:0);
   const rows=Object.keys(lg).sort().map(d=>{
     // only count challenger data captured by the CURRENTLY selected model;
-    // days logged under a different challenger are ignored for its columns
+    // days logged under a different challenger are ignored for its columns.
+    // Rows predating the ecModel tag carry no id; defaulting them to
+    // 'ecmwf_ifs' is not a guess — the challenger has always been ECMWF IFS
+    // 9 km (confirmed). If a differently-sourced challenger is ever
+    // back-filled, tag it at write time rather than widening this default.
     const match=(lg[d].ecModel||'ecmwf_ifs')===model;
     const met=lg[d].met==null?null:lg[d].met;
     const actmm=lg[d].actmm==null?null:lg[d].actmm;
@@ -2274,20 +2314,25 @@ async function checkWorker(){
     // True coverage: /towns reports every MET location the Worker can resolve.
     // (Previously probed /nearest?n=3 and displayed its count — which is always
     // 3, the size of the sample we asked for, not the coverage.)
-    let source='unknown',count=0;
+    // `source` used to be the source of the FIRST location only, while the list
+    // is routinely a mix of MET-official, bundled-table and geocoded coordinates
+    // — so a single 'met' row could label the whole set "MET official ✓".
+    // The Worker now returns per-source counts; show those.
+    let source='unknown',count=0,sources=null;
     try{
       const n=await fetch(`${base}/towns`);
-      if(n.ok){const nj=await n.json();source=nj.source||'unknown';count=nj.count||0;}
+      if(n.ok){const nj=await n.json();source=nj.source||'unknown';count=nj.count||0;sources=nj.sources||null;}
     }catch(e){}
+    const mix=sources?`<br>${t.wsMix(sources)}`:'';
     if(source==='met'){
       el.className='worker-status show ok';
-      el.innerHTML=`<span class="ws-dot g"></span><b>${t.wsOnline}</b> · ${t.wsSrcMet}<br>${t.wsCount(count)}`;
+      el.innerHTML=`<span class="ws-dot g"></span><b>${t.wsOnline}</b> · ${t.wsSrcMet}<br>${t.wsCount(count)}${mix}`;
     }else if(source==='table'){
       el.className='worker-status show warn';
-      el.innerHTML=`<span class="ws-dot a"></span><b>${t.wsOnline}</b> · ${t.wsSrcTable}<br>${t.wsCount(count)}`;
+      el.innerHTML=`<span class="ws-dot a"></span><b>${t.wsOnline}</b> · ${t.wsSrcTable}<br>${t.wsCount(count)}${mix}`;
     }else{
       el.className='worker-status show warn';
-      el.innerHTML=`<span class="ws-dot a"></span><b>${t.wsOnline}</b> · ${t.wsSrcUnknown}`;
+      el.innerHTML=`<span class="ws-dot a"></span><b>${t.wsOnline}</b> · ${t.wsSrcUnknown}${mix}`;
     }
   }catch(e){
     el.className='worker-status show err';
