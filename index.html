@@ -1178,7 +1178,7 @@ function renderLocList(){
   renderBin();
 }
 function setActiveLoc(id){ activeLoc=id; state.activeLoc=id||null; save(); }
-function selectLoc(id){setActiveLoc(id);clearStatus();renderLocList();updateLocHint();updateLogBtn();}
+function selectLoc(id){setActiveLoc(id);renderLocList();updateLocHint();runDuel();}
 /* Toggle a region open/closed and swap its chevron glyph directly (WebView
    doesn't reliably render CSS rotate on the ▶ arrow, so we swap ▶↔▼). */
 function toggleRegion(el){
@@ -1395,7 +1395,7 @@ function applyMetTown(nameEnc,km){
   if(name===auto){ delete loc.metTownChosen;delete loc.metTownKm; }  // back to auto
   else { loc.metTownChosen=name;loc.metTownKm=(km==null?null:km); }
   // moving MET town invalidates logged MET history for this farm (different point)
-  if(state.log[loc.id]) for(const d in state.log[loc.id]) delete state.log[loc.id][d].met;
+  if(state.log[loc.id]) for(const d in state.log[loc.id]){ delete state.log[loc.id][d].met; delete state.log[loc.id][d].metP; }
   save();closeMetSwitch();renderLocList();
   if(loc.id===activeLoc&&lastResult) runDuel();
   toast(T().metSwitched(name));
@@ -1440,8 +1440,10 @@ async function fetchMETviaProxy(lat,lon,chosenTown){
 /* Time-of-day windows (local KL hours). MET splits the day into these three
    periods; we bin ECMWF/ERA5 hourly rainfall into the same windows to compare. */
 const PERIODS=[['morning',6,12],['afternoon',12,18],['night',18,24]];
-/* Given an hourly {timeISO: mm} map for one date, return per-period rain flags. */
-function binHourlyToPeriods(hours, date, thresh){
+/* Given an hourly {timeISO: mm} map for one date, return per-period rainfall
+   totals in mm (null = no data). The totals are what gets stored, so period
+   flags can be re-derived whenever the rain threshold changes. */
+function binHourlyToPeriodMm(hours, date){
   const out={morning:null,afternoon:null,night:null};
   for(const [name,h0,h1] of PERIODS){
     let sum=0,seen=false;
@@ -1449,7 +1451,17 @@ function binHourlyToPeriods(hours, date, thresh){
       const key=`${date}T${String(h).padStart(2,'0')}:00`;
       if(hours[key]!=null){ sum+=hours[key]; seen=true; }
     }
-    out[name]=seen?(sum>=thresh?1:0):null;
+    out[name]=seen?Math.round(sum*100)/100:null;
+  }
+  return out;
+}
+/* Period rain flags at threshold `th`: from stored totals when present, else
+   the legacy stored flags (rows logged before totals were kept). */
+function periodFlags(mm, stored, th){
+  if(!mm) return stored||null;
+  const out={};
+  for(const [name] of PERIODS){
+    out[name]=mm[name]==null ? (stored&&stored[name]!=null?stored[name]:null) : (mm[name]>=th?1:0);
   }
   return out;
 }
@@ -1467,7 +1479,8 @@ async function fetchECMWFforecast(lat,lon,thresh){
   (j.hourly?.time||[]).forEach((tkey,i)=>{ hours[tkey.slice(0,13)+':00']=j.hourly.precipitation[i]; });
   (j.daily?.time||[]).forEach((d,i)=>{
     const mm=j.daily.precipitation_sum[i];
-    out[d]={rain:mm==null?null:(mm>=thresh?1:0),mm,periods:binHourlyToPeriods(hours,d,thresh)};
+    const pmm=binHourlyToPeriodMm(hours,d);
+    out[d]={rain:mm==null?null:(mm>=thresh?1:0),mm,periods:periodFlags(pmm,null,thresh),periodMm:pmm};
   });
   return out;
 }
@@ -1481,7 +1494,8 @@ async function fetchERA5actuals(lat,lon,from,to,thresh){
   (j.hourly?.time||[]).forEach((tkey,i)=>{ hours[tkey.slice(0,13)+':00']=j.hourly.precipitation[i]; });
   (j.daily?.time||[]).forEach((d,i)=>{
     const mm=j.daily.precipitation_sum[i];
-    out[d]=mm==null?null:{rain:(mm>=thresh?1:0),mm,periods:binHourlyToPeriods(hours,d,thresh)};
+    const pmm=binHourlyToPeriodMm(hours,d);
+    out[d]=mm==null?null:{rain:(mm>=thresh?1:0),mm,periods:periodFlags(pmm,null,thresh),periodMm:pmm};
   });
   return out;
 }
@@ -1517,7 +1531,7 @@ async function logOneFarm(loc, thresh){
     for(const [d,v] of Object.entries(ec)){
       lg[d]=lg[d]||{};
       if(lg[d].ecmwf==null || lg[d].ecModel!==model){
-        lg[d].ecmwf=v.rain;lg[d].ecmm=v.mm;lg[d].ecP=v.periods;lg[d].ecModel=model;
+        lg[d].ecmwf=v.rain;lg[d].ecmm=v.mm;lg[d].ecP=v.periods;lg[d].ecPmm=v.periodMm;lg[d].ecModel=model;
       }
     }
     gotChal=Object.keys(ec).length>0;
@@ -1539,7 +1553,7 @@ async function logOneFarm(loc, thresh){
           if(!lg[d]) continue;
           if(a==null){ continue; }
           // new shape {rain,mm,periods}; also tolerate legacy plain 0/1
-          if(typeof a==='object'){ lg[d].actual=a.rain; lg[d].actmm=a.mm; if(a.periods) lg[d].actP=a.periods; }
+          if(typeof a==='object'){ lg[d].actual=a.rain; lg[d].actmm=a.mm; if(a.periods){ lg[d].actP=a.periods; lg[d].actPmm=a.periodMm; } }
           else { lg[d].actual=a; }
         }
       }catch(e){}
@@ -1872,7 +1886,9 @@ function runDuel(){
       ecmwf: match? bin(lg[d].ecmm, lg[d].ecmwf) : null,
       ecmm: match&&lg[d].ecmm!=null?lg[d].ecmm:null,
       actmm,
-      metP:lg[d].metP||null, ecP: match?(lg[d].ecP||null):null, actP:lg[d].actP||null
+      metP:lg[d].metP||null,
+      ecP: match?periodFlags(lg[d].ecPmm,lg[d].ecP,th):null,
+      actP: periodFlags(lg[d].actPmm,lg[d].actP,th)
     };
   });
   finishDuel(loc,nt,rows,false);
@@ -2355,6 +2371,7 @@ function getThresh(){
 function saveThresh(){
   const v=parseFloat($('#thresh').value);
   state.settings.rainThresh=(v&&v>0)?v:DEFAULT_THRESH;save();
+  if(lastResult && activeLoc) runDuel();   // re-score under the new threshold
   status(T().threshSaved(getThresh()),'ok');
 }
 /* Challenger model picker: which single model MET Malaysia duels against. */
