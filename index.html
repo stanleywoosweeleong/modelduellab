@@ -662,6 +662,7 @@ const SEED_FARMS = [
   ["Dong - Hong 东区 - 鸿总",4.090556,101.966111,"Raub 劳勿"],
   ["Ulu Gali - Jacky Kuan 乌鲁加里 - Jacky Kuan",3.834694,101.911833,"Raub 劳勿"],
   ["Raub Batu Tiga - James Lye 劳勿三英里 - James",3.79275,101.903889,"Raub 劳勿"],
+  ["Tras 都赖",3.73622,101.80792,"Raub 劳勿"],
   ["Ringlet 冷力",4.41453,101.38415,"Cameron 金马仑"],
   ["Bertam Valley 伯坦谷",4.397,101.381,"Cameron 金马仑"],
   ["Habu 哈布",4.44011,101.38921,"Cameron 金马仑"],
@@ -702,7 +703,6 @@ const SEED_FARMS = [
   ["Bentong Selatan 文冬市南",3.516833,101.897667,"Bentong 文冬"],
   ["Waterway Villa 水道别墅",3.44917,101.90056,"Bentong 文冬"],
   ["Kg. Benus 甘榜本努斯",3.50783,101.92667,"Bentong 文冬"],
-  ["Tras 都赖",3.73622,101.80792,"Bentong 文冬"],
   ["Kampung Hulu Lebu 乌鲁乐布新村",3.57278,101.92611,"Bentong 文冬"],
   ["Kampung Lebu 甘榜乐布",3.616,101.933,"Bentong 文冬"],
   ["Sungai Ruan 双溪兰",3.8542814,101.9430543,"Bentong Team 团队"],
@@ -759,8 +759,11 @@ const SEED_FARMS = [
   ["Tanjung Malim 丹绒马林",3.71778,101.55278,"Uncle Soon 順豪"],
   ["Sungai Lembing 林明",3.85,103.03333,"Uncle Soon 順豪"],
 ];
-const SEED_VERSION = 5;
+const SEED_VERSION = 6;
 const REGION_RENAMES = { "Jerantut":"Jerantut 而连突", "Miketam":"Miketam 苏晓薇" };
+/* Seed farms filed under the wrong district: [name, old region, new region].
+   Moved in place on existing installs so the farm keeps its id and log. */
+const FARM_REGION_MOVES = [ ["Tras 都赖","Bentong 文冬","Raub 劳勿"] ];
 const DEFAULT_MET_PROXY = 'https://modelduel-met.standphoto.workers.dev';
 
 /* ===================== state ===================== */
@@ -823,6 +826,8 @@ if(state.seeded && state.locations && (state.seedVersion||0)<SEED_VERSION){
     const hit=SEED_FARMS.find(([n,la,lo])=>Math.abs(la-(+loc.lat))<1e-4&&Math.abs(lo-(+loc.lon))<1e-4);
     if(hit) loc.region=hit[3];
   }
+  for(const [n,from,to] of FARM_REGION_MOVES)
+    for(const loc of state.locations) if(loc.name===n&&loc.region===from) loc.region=to;
   const have=new Set(state.locations.map(l=>`${l.name}@@${l.region||""}`));
   SEED_FARMS.forEach(([name,lat,lon,region],i)=>{
     if(!have.has(`${name}@@${region}`)){
