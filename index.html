@@ -964,7 +964,7 @@ const I18N={
     driveStartRegion:(r,n)=>`记录 ${r}（${n} 个地点）`,
     autoDoneSome:(d,n,f)=>`已完成 ${d}/${n} · ${f} 个失败（网络繁忙，稍后可再跑一次补上）`,
     autoStopped:(d,n)=>`已停止 · 完成 ${d}/${n}（按 ${CAR_SVG} 图标可继续剩余）`,
-    alOff:'关闭 / Off',alActive:'仅当前地点 / Active farm',alRegion:r=>`${r}（整区）`,alAll:'全部地点 / All farms',
+    alOff:'关闭',alActive:'仅当前地点',alRegion:r=>`${r}（整区）`,alAll:'全部地点',
     driveNow:'立即记录全部（驾驶模式）',
     updateRegion:'更新此区所有地点',regionDone:n=>`已更新 ${n} 个地点 ✓`,
     regionDoneFailed:(ok,n,names)=>{const shown=names.slice(0,4).join('、');const extra=names.length>4?` 等 ${names.length} 个`:'';return `已更新 ${ok}/${n} · 失败：${shown}${extra}（可重试）`;},
