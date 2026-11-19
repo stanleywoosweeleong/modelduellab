@@ -428,10 +428,11 @@
         <span id="t-settings">设置</span>
         <span class="modal-x" onclick="closeSettings()">✕</span>
       </div>
-      <label class="fld" id="t-langlabel">语言 / Language</label>
+      <label class="fld" id="t-langlabel">语言 / Language / Bahasa</label>
       <div class="lang-switch">
         <button id="langZh" onclick="setLangDirect('zh')">中文</button>
         <button id="langEn" onclick="setLangDirect('en')">English</button>
+        <button id="langMs" onclick="setLangDirect('ms')">Melayu</button>
       </div>
       <div id="workerStatus" class="worker-status show" style="margin-top:16px"></div>
       <button class="btn ghost" onclick="checkWorker()" style="margin-top:10px"><span id="t-proxycheck">检查连线</span></button>
@@ -838,7 +839,8 @@ if(state.seeded && state.locations && (state.seedVersion||0)<SEED_VERSION){
   state.seedVersion=SEED_VERSION;save();
 }
 
-let LANG=state.lang||'zh';
+const I18N_LANGS=['zh','en','ms'];
+let LANG=I18N_LANGS.includes(state.lang)?state.lang:'zh';
 // Restore the last-viewed farm so returning users (often multi-farm owners) land
 // back where they were. Blank only on first launch (nothing persisted yet).
 let activeLoc=(state.activeLoc && state.locations.some(l=>l.id===state.activeLoc && !l.deleted))
@@ -914,7 +916,7 @@ const I18N={
     loggedNoChal:'已记录 MET（挑战者模型无回应，本次未记录）',
     loggedNothing:'⚠ 两个来源都没有取到数据——本次未记录任何预报。',
     setProxy:'MET 代理网址 (Cloudflare Worker)',proxySaved:'已保存代理网址',
-    proxyCheck:'检查连线',advanced:'高级设置',langLabel:'语言 / Language',
+    proxyCheck:'检查连线',advanced:'高级设置',langLabel:'语言 / Language / Bahasa',
     wsChecking:'检查中…',wsNoUrl:'请先填写代理网址',
     wsOnline:'Worker 在线',wsOffline:'无法连线到 Worker',
     wsSrcMet:'坐标来源：MET 官方 ✓',wsSrcTable:'坐标来源：内置表（近似）',
@@ -946,6 +948,7 @@ const I18N={
     errNet:'无法取得资料。请检查网络后重试。',
     errMet:'MET Malaysia 无回应或需权杖。此地点缺 MET 数据。',
     errRange:'请选择有效日期区间。',running:'对决进行中…',
+    otherRegion:'其他 / 自订',currentLoc:'当前位置',
     gpsErr:'无法取得定位',gpsOk:'已带入坐标',needName:'请填名称与坐标',
     softDeleted:'已删除',undo:'撤销',restored:'已恢复 ✓',
     restore:'恢复',bin:n=>`回收站（${n}）`,purge:'永久清空回收站',
@@ -1017,7 +1020,7 @@ const I18N={
     loggedNoChal:'Logged MET (challenger model did not respond — nothing logged for it)',
     loggedNothing:'⚠ Neither source returned data — nothing was logged this run.',
     setProxy:'MET proxy URL (Cloudflare Worker)',proxySaved:'Proxy URL saved',
-    proxyCheck:'Check connection',advanced:'Advanced',langLabel:'语言 / Language',
+    proxyCheck:'Check connection',advanced:'Advanced',langLabel:'语言 / Language / Bahasa',
     wsChecking:'Checking…',wsNoUrl:'Enter a proxy URL first',
     wsOnline:'Worker online',wsOffline:'Cannot reach Worker',
     wsSrcMet:'Coordinates: MET official ✓',wsSrcTable:'Coordinates: built-in table (approx.)',
@@ -1049,6 +1052,7 @@ const I18N={
     errNet:'Could not fetch data. Check your connection and try again.',
     errMet:'MET Malaysia returned nothing / needs token. No MET data for this spot.',
     errRange:'Pick a valid date range.',running:'Running the duel…',
+    otherRegion:'Other / Custom',currentLoc:'Current location',
     gpsErr:'Location unavailable',gpsOk:'Coordinates filled',needName:'Enter name & coordinates',
     softDeleted:'Deleted',undo:'Undo',restored:'Restored ✓',
     restore:'Restore',bin:n=>`Recycle bin (${n})`,purge:'Empty recycle bin permanently',
@@ -1061,7 +1065,112 @@ const I18N={
       '· Challenger models: ECMWF (EU) · DWD ICON (Germany) · NOAA GFS (USA) · ECCC GEM (Canada) · JMA (Japan) · CMA (China)\n'+
       '· Truth: ECMWF ERA5 reanalysis\n'+
       '· Model & ERA5 data served via Open-Meteo (CC-BY 4.0)\n'+
-      '· Built with Claude Opus 4.8 and Claude Fable 5 (Anthropic)'}
+      '· Built with Claude Opus 4.8 and Claude Fable 5 (Anthropic)'},
+  ms:{title:'ModelDuel Lab',sub:m=>`MET Malaysia 🆚 ${m}`,
+    challengerLabel:'Model pencabar (lawan MET)',challengerSaved:m=>`Pencabar ditetapkan kepada ${m}`,
+    locs:'Pilih lokasi',setup:'Log harian',from:'Dari',to:'Hingga',thresh:'Ambang hujan (mm/hari)',
+    threshHelpSum:'Apa yang dikira sebagai "hujan"?',
+    threshSaved:v=>`Ambang hujan ditetapkan kepada ${v} mm/hari`,
+    threshHelp:'Dari segi meteorologi, jumlah hujan sehari menentukan sama ada hari itu dikira "hari hujan":<br>• <b>0.1–0.2 mm</b>: had pengesanan tolok hujan; di bawah paras ini direkodkan sebagai sifar — tolok bergerak, tetapi itu bukan hujan sebenar.<br>• <b>1 mm</b>: ambang "hari basah" yang lazim dalam statistik iklim (indeks musim kering WMO menggunakan &lt;1mm untuk hari kering). Agak rendah.<br>• <b>2.5 mm</b>: takrif klasik "hari hujan" (sistem lama AS, masih digunakan oleh IMD India). Inilah yang digunakan oleh RainLog Lab.<br>• Julat keamatan (harian): &lt;1 tiada · 1–5 sangat renyai · 5–10 renyai · 10–30 sederhana · &gt;30 lebat.<br><br><b>⚠ Tetapi "hari hujan" ≠ "berbahaya" — yang penting ialah keamatan, bukan jumlah</b><br>Aplikasi ini menggunakan jumlah harian (mm/hari) kerana itulah cara yang adil untuk membandingkan model. Namun risiko banjir sebenar ditakrifkan oleh MET Malaysia mengikut keamatan sejam (mm/jam):<br>• <b>Amaran ribut petir</b>: keamatan hujan <b>melebihi 20 mm/jam</b> (sah sehingga 6 jam).<br>• <b>Banjir kilat</b>: hujan perolakan yang <b>melebihi 60 mm dalam 2–4 jam</b> biasanya mencetuskannya.<br>• <b>Amaran hujan berterusan</b>, 3 tahap: Waspada (kuning) · Buruk (jingga) · Bahaya (merah).<br>Hujan monsun berpanjangan dengan hujan lebat berselang-seli dan kadangkala boleh melebihi beberapa ratus mm dalam 24 jam.<br>Jadi 50 mm sepanjang hari berbanding 50 mm yang turun dalam satu jam — jumlah sama, risiko jauh berbeza. Untuk keamatan dan amaran banjir, gunakan aplikasi kembar <b>FlashFlood Lab</b>.<br><br>Ambang yang lebih tinggi bermakna hanya hujan yang benar-benar memberi kesan dikira — lebih hampir dengan keputusan sebenar di kebun. Tetapkan mengikut tanaman anda.',
+    run:'Mula duel',rescore:'Kira semula skor',proxySave:'Simpan',board:'Papan skor',log:'Hari demi hari',explain:'Panduan metrik',
+    inname:'Nama lokasi',gps:'Guna lokasi semasa',save:'Simpan lokasi',search:'Cari lokasi…',
+    update:'Kemas kini lokasi',cancel:'Batal',addNew:'＋ Tambah lokasi baharu',secAdd:'Tambah lokasi',secEdit:'Edit lokasi',secPick:'Pilih lokasi',editing:n=>`Sedang mengedit: ${n}`,updated:'Dikemas kini ✓',
+    keptNear:m=>`Dikemas kini (berpindah ${m}m, rekod dikekalkan)`,
+    date:'Tarikh',met:'MET',ecmwf:'ECMWF',actual:'Sebenar',rain:'Hujan',dry:'Kering',
+    metTown:t=>`MET: ${t}`,gpsBadge:'GPS',customBadge:'Tersuai',
+    metSwitch:'Pilih titik perbandingan MET',metNearest:'Lokasi MET terdekat',
+    metSrcOfficial:'Koordinat: rasmi MET',metSrcTable:'Koordinat: jadual terbina dalam (anggaran)',
+    metSwitched:n=>`Kini menggunakan MET: ${n}`,metVs:'lawan',metManual:'(manual)',
+    metFar:'jauh — keputusan sebagai panduan sahaja',metChange:'Tukar',
+    rank:'Kedudukan antara kebun',rankMetWins:'MET menang',rankEcWins:n=>`${n} menang`,rankTies:'Seri',rankTie:'Seri',
+    rankHint:n=>`${n} kebun telah diskor`,rankEmpty:'Belum ada kebun yang diskor · semak semula selepas beberapa hari log',
+    rankPending:n=>`${n} kebun menunggu data ERA5`,
+    selectFirst:'Pilih lokasi dahulu',tapToSelect:'Ketik untuk pilih kebun ▾',
+    verdictWin:(w,a,b)=>`<b>${w}</b> menang · CSI ${a} lawan ${b}`,
+    verdictTie:'Seri · CSI sama',verdictPending:'🏆 Pemenang akan dipaparkan di sini apabila skor sudah matang',
+    share:'Kongsi ke WhatsApp',sharePrevTitle:'Pratonton · mesej WhatsApp',shareCancel:'Batal',shareSend:'Hantar',
+    shTitle:'🏆 ModelDuel · Kad skor',
+    shTie:'Seri · CSI sama',
+    shWin:(w,a,b)=>`✅ ${w} menang · CSI ${a} lawan ${b}`,
+    shPending:'⏳ Data sebenar belum mencukupi',
+    shScores:'Skor (CSI/POD lebih tinggi lebih baik, FAR lebih rendah lebih baik):',
+    shAmount:(m,mae,n)=>`🌧 Jumlah hujan ${m} tersasar purata ${mae} mm/hari (${n} hari) · MET tiada data mm`,
+    shDays:n=>`📊 ${n} hari diskor (berbanding data sebenar ERA5)`,
+    shNoData:'📊 Data sedang dikumpul; data sebenar diisi kira-kira 5 hari kemudian',
+    shFoot:'— ModelDuel Lab · data Open-Meteo/MET Malaysia',
+    export:'📥 Eksport Excel (data mentah kebun ini)',
+    exportDone:n=>`${n} hari dieksport (.xlsx)`,
+    exportEmpty:'Belum ada rekod untuk dieksport bagi kebun ini',
+    amountLine:(mae,n,m)=>`🌧 Ketepatan jumlah: ${m} tersasar purata <b>${mae} mm/hari</b> (berbanding data sebenar ERA5, ${n} hari) · MET tiada data mm`,
+    periodTitle:'Ketepatan mengikut waktu · CSI (lebih tinggi lebih baik)',pMorning:'Pagi',pAfternoon:'Ptg',pNight:'Malam',
+    labCSI:'CSI',labPOD:'POD',labFAR:'FAR',
+    periodFoot:'Pagi 6-12 · Petang 12-18 · Malam 18-24j · berbanding data sebenar ERA5',
+    explainBody:'Kadar kena (POD): daripada hari yang benar-benar hujan, bahagian yang diramal dengan betul — lebih tinggi lebih baik. '+
+      'Kadar amaran palsu (FAR): daripada hari yang diramal hujan, bahagian yang kekal kering — lebih rendah lebih baik. '+
+      'Keseluruhan (CSI): gabungan kena, terlepas dan amaran palsu = kena ÷ (kena + terlepas + amaran palsu), 0–1, lebih tinggi lebih baik — ringkasan tunggal terbaik. '+
+      'Kedua-dua model diskor berbanding hujan sebenar ERA5 sebagai rujukan, bukan berbanding satu sama lain.',
+    matLive:n=>`${n} hari data sebenar dibandingkan`,
+    matThin:'Sampel kecil — sebagai panduan sahaja (sasaran ≥14 hari)',
+    matScored:n=>`${n} hari diskor (ada data sebenar)`,matPending:n=>`${n} menunggu data ERA5`,logRows:n=>`${n} hari dilog`,
+    metPeriodLegend:'Di bawah setiap tarikh, 🌅pagi ☀️petang 🌙malam = ramalan MET mengikut waktu: penuh = hujan diramal bagi waktu itu, pudar = kering, garis putus = tiada data. (Pecahan waktu yang hanya ada pada MET.)',
+    traceLegend:'≈ = hujan surih (antara 0 dan ambang — renyai-renyai langit mendung): hari itu dikecualikan daripada skor KEDUA-DUA model, secara simetri',
+    matEmpty:'Belum ada data yang boleh diskor · log setiap hari; data sebenar ERA5 diisi selepas 5 hari',
+    introTitle:'Ini ialah eksperimen jangka panjang',
+    introBody:'Buka aplikasi sekali sehari dan log ramalan. Hujan sebenar (ERA5) diisi kira-kira <b>5 hari kemudian</b>, jadi skor pertama anda muncul paling awal pada hari ke-5 hingga ke-6.<br>Skor menjadi <b>panduan selepas ~2 minggu</b> (≥14 hari) dan <b>boleh dipercayai selepas ~3 minggu</b> (~20 hari). Teruskan log setiap hari 🌱',
+    logToday:'Log ramalan hari ini',logging:'Sedang log…',
+    loggedTodayBtn:'Hari ini sudah dilog ✓ (kira semula skor di bawah)',reLog:'Log semula hari ini',
+    loggedOk:t=>`Dilog · MET: ${t}`,loggedNoMet:'ECMWF dilog (tiada data MET / proksi belum ditetapkan)',
+    noProxy:'URL proksi MET belum ditetapkan — hanya ECMWF dilog. Lihat Tetapan.',
+    metStale:d=>`⚠ Ramalan MET nampaknya sudah lapuk (hari terbaharu ${d}) — MET tidak dilog kali ini, supaya ramalan lama tidak diskor sebagai ramalan hari ini.`,
+    loggedNoChal:'MET dilog (model pencabar tidak memberi respons — tiada apa-apa dilog untuknya)',
+    loggedNothing:'⚠ Kedua-dua sumber tidak memulangkan data — tiada apa-apa dilog kali ini.',
+    setProxy:'URL proksi MET (Cloudflare Worker)',proxySaved:'URL proksi disimpan',
+    proxyCheck:'Semak sambungan',advanced:'Lanjutan',langLabel:'语言 / Language / Bahasa',
+    wsChecking:'Sedang menyemak…',wsNoUrl:'Masukkan URL proksi dahulu',
+    wsOnline:'Worker dalam talian',wsOffline:'Tidak dapat menghubungi Worker',
+    wsSrcMet:'Koordinat: rasmi MET ✓',wsSrcTable:'Koordinat: jadual terbina dalam (anggaran)',
+    wsSrcUnknown:'Sumber koordinat tidak diketahui',wsCount:n=>`${n} lokasi MET tersedia`,
+    wsMix:o=>`Pecahan: MET ${o.met||0} · jadual ${o.table||0} · geokod ${o.geo||0}`,
+    wsHint:'Semak sama ada URL betul dan Worker telah diatur guna.',
+    autoLogLabel:'Log automatik harian (semasa dibuka)',
+    autoRunning:(d,n)=>`Mod memandu… ${d}/${n}`,autoDone:n=>`${n} lokasi dilog ✓`,
+    updateReady:'Versi baharu sedia',updateGo:'Kemas kini',
+    metMissNote:n=>`<br>⚠ ${n} daripadanya belum ada data MET (Worker meliputi bandar MET yang terhad) — pencabar dilog`,
+    autoRunning2:(d,n,r)=>`Mod memandu… ${d}/${n} · baki ${r}`,
+    autoPaused:(d,n,r)=>`Dijeda · ${d}/${n} · baki ${r} (ketik Sambung)`,
+    drivePause:'Jeda',driveResume:'Sambung',driveStop:'Henti',
+    driveResumeN:r=>`Sambung log (baki ${r})`,
+    driveTitle:'Log berkelompok (mod memandu)',driveCov:(d,n)=>`Hari ini ${d}/${n}`,
+    driveAllDone:'Semua sudah dilog hari ini ✓',
+    driveStartAll:n=>`Log semua ${n} kebun`,
+    driveStartRegion:(r,n)=>`Log ${r} (${n} kebun)`,
+    autoDoneSome:(d,n,f)=>`Selesai ${d}/${n} · ${f} gagal (rangkaian sibuk — jalankan semula kemudian untuk melengkapkannya)`,
+    autoStopped:(d,n)=>`Dihentikan · ${d}/${n} selesai (ketik ikon ${CAR_SVG} untuk sambung)`,
+    alOff:'Mati',alActive:'Kebun aktif sahaja',alRegion:r=>`${r} (seluruh kawasan)`,alAll:'Semua kebun',
+    driveNow:'Log semua sekarang (mod memandu)',
+    updateRegion:'Kemas kini semua kebun di kawasan ini',regionDone:n=>`${n} kebun dikemas kini ✓`,
+    regionDoneFailed:(ok,n,names)=>{const shown=names.slice(0,4).join(', ');const extra=names.length>4?` +${names.length-4} lagi`:'';return `Dikemas kini ${ok}/${n} · gagal: ${shown}${extra} (cuba lagi)`;},
+    drivePromptMsg:(scope,n)=>`Log automatik harian dihidupkan (${scope}). Log ${n} lokasi sekarang melalui mod memandu? Skrin akan kekal menyala — biarkan aplikasi di latar depan semasa ia berjalan.`,
+    drivePromptGo:'Mula log',drivePromptSkip:'Langkau hari ini',drivePromptOff:'Matikan log automatik',
+    autoOffNow:'Log automatik harian dimatikan',autoBatchSet:'Disimpan · pelancaran seterusnya akan bertanya sebelum memulakan log mod memandu',
+    settings:'Tetapan',
+    errNet:'Tidak dapat mengambil data. Semak sambungan anda dan cuba lagi.',
+    errMet:'MET Malaysia tidak memulangkan apa-apa / memerlukan token. Tiada data MET untuk lokasi ini.',
+    errRange:'Pilih julat tarikh yang sah.',running:'Duel sedang berjalan…',
+    gpsErr:'Lokasi tidak tersedia',gpsOk:'Koordinat diisi',needName:'Masukkan nama & koordinat',
+    softDeleted:'Dipadam',undo:'Buat asal',restored:'Dipulihkan ✓',
+    restore:'Pulihkan',bin:n=>`Tong kitar semula (${n})`,purge:'Kosongkan tong kitar semula secara kekal',
+    confirmPurge:'Padam secara kekal semua lokasi dalam tong kitar semula berserta rekodnya? Tindakan ini tidak boleh dibuat asal.',purged:'Tong kitar semula dikosongkan',
+    otherRegion:'Lain-lain / Tersuai',currentLoc:'Lokasi semasa',
+    foot:'Ramalan kategori MET dan hujan berangka (mm) model pencabar kedua-duanya diringkaskan kepada keputusan hujan/kering, '+
+      'dan diskor berbanding data sebenar ERA5. Koordinat kebun dipadankan secara automatik dengan bandar MET terdekat. '+
+      'Boleh digunakan luar talian · data kekal dalam peranti · v1.0.0\n\n'+
+      'Sumber data & penghargaan:\n'+
+      '· Ramalan: MET Malaysia — Jabatan Meteorologi Malaysia (data.gov.my)\n'+
+      '· Model pencabar: ECMWF (EU) · DWD ICON (Jerman) · NOAA GFS (AS) · ECCC GEM (Kanada) · JMA (Jepun) · CMA (China)\n'+
+      '· Rujukan sebenar: analisis semula ECMWF ERA5\n'+
+      '· Data model & ERA5 disediakan melalui Open-Meteo (CC-BY 4.0)\n'+
+      '· Dibina dengan Claude Opus 4.8 dan Claude Fable 5 (Anthropic)'}
 };
 const T=()=>I18N[LANG];
 
@@ -1090,7 +1199,7 @@ function paintLabels(){
   $('#foot').textContent=t.foot;
   set('t-intro-title',t.introTitle);
   const ib=$('#t-intro-body');if(ib)ib.innerHTML=t.introBody;
-  document.documentElement.lang=LANG==='zh'?'zh':'en';
+  document.documentElement.lang=LANG;
   updateIntro();
 }
 
@@ -1145,7 +1254,7 @@ function renderLocList(){
   const groups={};
   for(const l of live){
     if(q && !l.name.toLowerCase().includes(q)) continue;
-    const g=l.region||(LANG==='zh'?'其他 / 自订':'Other / Custom');
+    const g=l.region||T().otherRegion;
     (groups[g]=groups[g]||[]).push(l);
   }
   const el=$('#locList');
@@ -1313,7 +1422,7 @@ function useGps(){
     $('#inLat').value=p.coords.latitude.toFixed(4);
     $('#inLon').value=p.coords.longitude.toFixed(4);
     $('#inLat').dataset.gps='1';
-    if(!$('#inName').value.trim()) $('#inName').value=(LANG==='zh'?'当前位置':'Current location');
+    if(!$('#inName').value.trim()) $('#inName').value=T().currentLoc;
     status(t.gpsOk,'ok');
   },()=>status(t.gpsErr,'err'),{enableHighAccuracy:true,timeout:10000});
 }
@@ -2441,9 +2550,9 @@ function setLangDirect(l){
   updateLangSwitch();
 }
 function updateLangSwitch(){
-  const z=$('#langZh'),e=$('#langEn');
-  if(z)z.classList.toggle('on',LANG==='zh');
-  if(e)e.classList.toggle('on',LANG==='en');
+  for(const [id,l] of [['langZh','zh'],['langEn','en'],['langMs','ms']]){
+    const b=$('#'+id); if(b) b.classList.toggle('on',LANG===l);
+  }
 }
 $('#btnAdd').addEventListener('click',saveLoc);
 
