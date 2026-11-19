@@ -1177,6 +1177,7 @@ const I18N={
     trendTitle:'走势',trendSub:n=>`最近 ${n} 天的综合分 (CSI)，越高越好`,
     trendNeed:(n,m)=>`至少要有 ${m} 天已评分才能画出走势，目前 ${n} 天。`,trendValues:'显示数值',
     seasonTitle:'按季节',seasonDays:'天数',seasonNE:'东北季候风（11–3月）',seasonSW:'西南季候风（5–9月）',seasonInter:'季候风转换期（4、10月）',
+    syncDone:(d,f)=>`已从服务器补入 ${d} 天的预报记录（${f} 个地点）`,
     gpsErr:'无法取得定位',gpsOk:'已带入坐标',needName:'请填名称与坐标',
     softDeleted:'已删除',undo:'撤销',restored:'已恢复 ✓',
     restore:'恢复',bin:n=>`回收站（${n}）`,purge:'永久清空回收站',
@@ -1306,6 +1307,7 @@ const I18N={
     trendTitle:'Trend',trendSub:n=>`CSI over the trailing ${n} days (higher is better)`,
     trendNeed:(n,m)=>`A trend needs at least ${m} scored days — ${n} so far.`,trendValues:'Show values',
     seasonTitle:'By season',seasonDays:'Days',seasonNE:'Northeast monsoon (Nov–Mar)',seasonSW:'Southwest monsoon (May–Sep)',seasonInter:'Inter-monsoon (Apr, Oct)',
+    syncDone:(d,f)=>`Added ${d} day${d>1?'s':''} of forecasts captured by the server (${f} farms)`,
     gpsErr:'Location unavailable',gpsOk:'Coordinates filled',needName:'Enter name & coordinates',
     softDeleted:'Deleted',undo:'Undo',restored:'Restored ✓',
     restore:'Restore',bin:n=>`Recycle bin (${n})`,purge:'Empty recycle bin permanently',
@@ -1435,6 +1437,7 @@ const I18N={
     trendTitle:'Trend',trendSub:n=>`CSI bagi ${n} hari terakhir (lebih tinggi lebih baik)`,
     trendNeed:(n,m)=>`Trend memerlukan sekurang-kurangnya ${m} hari yang diskor — setakat ini ${n}.`,trendValues:'Tunjuk nilai',
     seasonTitle:'Mengikut musim',seasonDays:'Hari',seasonNE:'Monsun Timur Laut (Nov–Mac)',seasonSW:'Monsun Barat Daya (Mei–Sep)',seasonInter:'Peralihan monsun (Apr, Okt)',
+    syncDone:(d,f)=>`${d} hari ramalan yang ditangkap oleh pelayan ditambah (${f} kebun)`,
     gpsErr:'Lokasi tidak tersedia',gpsOk:'Koordinat diisi',needName:'Masukkan nama & koordinat',
     softDeleted:'Dipadam',undo:'Buat asal',restored:'Dipulihkan ✓',
     restore:'Pulihkan',bin:n=>`Tong kitar semula (${n})`,purge:'Kosongkan tong kitar semula secara kekal',
@@ -2051,6 +2054,76 @@ async function logOneFarm(loc, thresh){
   return {gotMet,metTown,noProxy,gotToday,metStale,chalFailed};
 }
 
+/* ===================== server captures =====================
+   A scheduled job (scripts/capture.mjs, run by GitHub Actions) captures every
+   model's forecast for every seed farm each morning and publishes one file per
+   day under ./data/captures/. Merging them here means the record no longer
+   depends on the app being opened daily. Same rules as logging on the phone:
+   each forecast is filed under its lead time and nothing already captured is
+   overwritten. Farms added on this phone are not in those files. */
+const SYNC_KEY=NS+'.serverSync';       // newest capture date already merged
+const coordKey=(lat,lon)=>(+lat).toFixed(4)+','+(+lon).toFixed(4);
+function mergeCapture(cap){
+  if(!cap||!cap.date||!cap.farms) return 0;
+  const th=getThresh(), P=v=>({morning:v[1],afternoon:v[2],night:v[3]});
+  let changedFarms=0;
+  for(const loc of state.locations){
+    if(loc.deleted) continue;
+    const f=cap.farms[coordKey(loc.lat,loc.lon)]; if(!f) continue;
+    const lg=state.log[loc.id]||{}; let changed=false;
+    const entry=d=>(lg[d]=lg[d]||{});
+    for(const model in (f.fc||{})) for(const d in f.fc[model]){
+      const v=f.fc[model][d];
+      if(putFcLead(entry(d),model,dayDiff(d,cap.date),v[0],P(v))) changed=true;
+    }
+    // MET for this farm's comparison town (the user's choice, else the nearest)
+    const rows=cap.met&&cap.met[loc.metTownChosen||f.town];
+    for(const d in (rows||{})){
+      const v=rows[d], e=entry(d);
+      if(putMetLead(e,dayDiff(d,cap.date),v[0],P(v))) changed=true;
+      if(e.met==null){ e.met=v[0]; changed=true; }            // first capture, as on the phone
+      if(e.metP==null){ e.metP=P(v); changed=true; }
+    }
+    // ERA5 actuals: only for dates that have a log entry; the newest value wins
+    for(const d in (f.act||{})){
+      const e=lg[d], v=f.act[d]; if(!e||v[0]==null) continue;
+      const pmm=P(v);
+      if(e.actmm!==v[0]||JSON.stringify(e.actPmm)!==JSON.stringify(pmm)){
+        e.actmm=v[0]; e.actual=v[0]>=th?1:0; e.actPmm=pmm; e.actP=periodFlags(pmm,null,th); changed=true;
+      }
+    }
+    if(changed){ state.log[loc.id]=lg; touchLog(loc.id); changedFarms++; }
+  }
+  return changedFarms;
+}
+let _syncing=false,_lastSyncTry=0;
+async function syncServerCaptures(){
+  if(location.protocol==='file:'||navigator.onLine===false||_syncing) return;
+  if(Date.now()-_lastSyncTry<30*60*1000) return;       // at most every half hour
+  _syncing=true; _lastSyncTry=Date.now();
+  try{
+    await logReady;
+    const r=await fetch('./data/index.json',{cache:'no-cache'}); if(!r.ok) return;
+    const idx=await r.json();
+    // Re-read the last merged day too: the midday run tops up the morning file.
+    const last=localStorage.getItem(SYNC_KEY)||'';
+    const todo=(idx.dates||[]).filter(d=>d>=last).sort().slice(-45);
+    let days=0,farms=0;
+    for(const d of todo){
+      const cr=await fetch(`./data/captures/${d}.json`,{cache:'no-cache'}); if(!cr.ok) break;
+      const n=mergeCapture(await cr.json());
+      if(n){ days++; farms=Math.max(farms,n); }
+      localStorage.setItem(SYNC_KEY,d);
+    }
+    if(days){
+      save();
+      if(activeLoc) runDuel(); else if(rankCardOpen) renderRanking();
+      toast(T().syncDone(days,farms));
+    }
+  }catch(e){ console.warn('server capture sync failed:',e&&e.message); }
+  finally{ _syncing=false; }
+}
+
 /* ===================== LOG TODAY (manual, active farm, with UI) ============== */
 async function logToday(){
   const t=T();
@@ -2088,7 +2161,9 @@ async function fetchRetry(url, tries=3){
   for(let i=0;i<tries;i++){
     try{
       const r=await fetch(url);
-      if(r.status===429||r.status===503){ lastErr=new Error('throttle '+r.status);
+      // 429/503 = throttled; 500/502/504 = the MET Worker's cold-start and
+      // upstream (data.gov.my) hiccups, which clear on a retry.
+      if([429,500,502,503,504].includes(r.status)){ lastErr=new Error('throttle '+r.status);
         await sleep(700*(i+1)+Math.random()*400); continue; }
       return r;
     }catch(e){ lastErr=e; await sleep(500*(i+1)+Math.random()*300); }
@@ -3191,7 +3266,9 @@ logReady.then(()=>{
   updateIntro(); if(rankCardOpen) renderRanking();
   /* fire-and-forget once-per-day auto-log; never blocks first paint */
   setTimeout(()=>{ autoLogOnOpen().catch(()=>{}); }, 400);
+  syncServerCaptures();
 });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') syncServerCaptures(); });
 
 /* Register the service worker for offline support. Must be a file at the
    site root (./sw.js) — a blob URL can't cache the app shell.

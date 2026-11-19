@@ -68,6 +68,7 @@ self.addEventListener('activate', (e) => {
    - navigations  → the cached app, instantly; network only if nothing is cached
    - same-origin  → cache first, then network, and cache what comes back
    - cross-origin → left alone (Open-Meteo, MET worker are the page's business)
+   - ./data/      → left alone (daily capture files, always from the network)
    Freshness is handled by the "check" message, not here. */
 self.addEventListener('fetch', (e) => {
   const req = e.request;
@@ -75,6 +76,9 @@ self.addEventListener('fetch', (e) => {
   let url;
   try { url = new URL(req.url); } catch (err) { return; }
   if (url.origin !== self.location.origin) return;
+  // Daily capture files change on the server every day: never serve or store
+  // them from this cache (the page merges them into its own log).
+  if (url.pathname.indexOf('/data/') !== -1) return;
 
   if (req.mode === 'navigate') {
     e.respondWith(

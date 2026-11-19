@@ -1,0 +1,39 @@
+name: Daily forecast capture
+
+# Captures every model's forecast for every seed farm once a day, so the record
+# no longer depends on someone opening the app. See scripts/capture.mjs.
+on:
+  schedule:
+    - cron: '17 22 * * *'   # 06:17 Malaysia time
+    - cron: '17 4 * * *'    # 12:17 Malaysia time — fills anything the first run missed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Capture forecasts
+        run: node scripts/capture.mjs
+      - name: Commit the capture
+        run: |
+          git config user.name "modelduel-capture"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "Nothing new to commit."
+          else
+            git commit -m "Daily forecast capture $(date -u +%F)"
+            git push
+          fi
