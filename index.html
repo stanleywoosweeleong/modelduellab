@@ -601,7 +601,6 @@
    family + custom + GPS, all in one state.locations array.
    Single-file, offline-first, bilingual (ZH default). No fabrication.
 =========================================================== */
-const CACHE_VERSION = 'modelduel-20260813-25';
 const STORE_KEY = 'modelduel-v1-state';
 const NS = 'modelduel';
 
@@ -802,16 +801,96 @@ function load(){
   return {locations:[],seeded:false,seedVersion:0,lastResult:null,lang:null,
           log:{},settings:{metProxy:DEFAULT_MET_PROXY,autoLog:'off'}};
 }
-function save(){localStorage.setItem(STORE_KEY,JSON.stringify(state));}
 let state=load();
 
+/* ---- persistence ----
+   Core state (farms, settings, last result) stays in localStorage: small and
+   synchronous. The per-farm forecast log — which grows every day and holds
+   forecasts that can never be re-fetched — lives in IndexedDB, one record per
+   farm, because localStorage is capped at about 5 MB for the whole origin and
+   a full farm list fills that within months. If IndexedDB is unavailable the
+   log stays in localStorage exactly as before. */
+const IDB_NAME='modelduel', IDB_STORE='log';
+let idb=null, logStore='ls', logLoaded=false, _quotaWarned=false;
+const dirtyFarms=new Set();
+let _logReadyResolve; const logReady=new Promise(r=>{ _logReadyResolve=r; });
+/* Every write to state.log[farmId] must be followed by touchLog(farmId) so the
+   next save() persists (or deletes) that farm's record. */
+function touchLog(farmId){ dirtyFarms.add(farmId); }
+function idbReq(rq){ return new Promise((res,rej)=>{ rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); }); }
+function idbOpen(){ return new Promise((res,rej)=>{
+  let rq; try{ rq=indexedDB.open(IDB_NAME,1); }catch(e){ rej(e); return; }
+  rq.onupgradeneeded=()=>{ rq.result.createObjectStore(IDB_STORE); };
+  rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error);
+}); }
+async function idbLoadLogs(){
+  const st=idb.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE);
+  const [keys,vals]=await Promise.all([idbReq(st.getAllKeys()),idbReq(st.getAll())]);
+  const out={}; keys.forEach((k,i)=>{ out[k]=vals[i]; }); return out;
+}
+function flushLog(){
+  if(logStore!=='idb'||!dirtyFarms.size) return Promise.resolve();
+  const ids=[...dirtyFarms]; dirtyFarms.clear();
+  return new Promise((res,rej)=>{
+    const tx=idb.transaction(IDB_STORE,'readwrite'),st=tx.objectStore(IDB_STORE);
+    for(const id of ids){ if(state.log[id]) st.put(state.log[id],id); else st.delete(id); }
+    tx.oncomplete=()=>res();
+    tx.onerror=tx.onabort=()=>{ ids.forEach(id=>dirtyFarms.add(id)); rej(tx.error); };
+  });
+}
+function storageTrouble(e){
+  console.warn('save failed',e);
+  if(_quotaWarned) return; _quotaWarned=true;
+  setTimeout(()=>{ try{ status(T().storageFull,'err'); }catch(_){} },0);
+}
+function save(){
+  const core=(logStore==='idb')?Object.assign({},state,{log:undefined}):state;
+  try{ localStorage.setItem(STORE_KEY,JSON.stringify(core)); }catch(e){ storageTrouble(e); }
+  flushLog().catch(storageTrouble);
+}
+/* Open IndexedDB and load the log. Anything still in localStorage — an install
+   from before this change, or a write by an old cached copy of the page — is
+   merged in (dates IndexedDB does not have yet), written to IndexedDB, and only
+   then dropped from localStorage. */
+(async function initLogStore(){
+  try{
+    idb=await idbOpen();
+    const stored=await idbLoadLogs();
+    const legacy=state.log||{};
+    for(const id in legacy){
+      if(!stored[id]){ stored[id]=legacy[id]; dirtyFarms.add(id); continue; }
+      for(const d in legacy[id]) if(!stored[id][d]){ stored[id][d]=legacy[id][d]; dirtyFarms.add(id); }
+    }
+    state.log=stored; logStore='idb';
+    try{ await flushLog(); }catch(e){ logStore='ls'; throw e; }
+    save();
+    if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+  }catch(e){
+    console.warn('IndexedDB unavailable — log stays in localStorage',e);
+    logStore='ls'; if(!state.log) state.log={};
+  }
+  logLoaded=true; _logReadyResolve();
+})();
+
 /* ---- forecast/actual LOG model (RainScore maturity pattern) ----
-   state.log[farmId] = { "YYYY-MM-DD": { met:0/1/null, ecmwf:0/1/null,
-                                         actual:0/1/null, ecmm:Number } }
-   MET & ECMWF are captured as *forecasts for that date* on the day we log.
-   ERA5 actual backfills ~5 days later. CSI is computed only over dates
-   where a forecast AND an actual both exist — so scores mature over weeks,
-   never fabricated from a retrospective MET call (MET has no past archive). */
+   state.log[farmId]["YYYY-MM-DD"] is everything known about that TARGET date:
+
+     ml[lead]        = [rain, morning, afternoon, night]   MET flags (0/1/null)
+     fc[model][lead] = [mm, mmMorning, mmAfternoon, mmNight]   every challenger
+        lead = days between the capture and the target date (0 = same day … 6).
+        One entry per lead, first capture of that day wins, never overwritten.
+     actmm, actPmm{} = ERA5 actual (backfills ~5 days later)
+     gmm             = the farm's own rain-gauge reading, if entered (wins over ERA5)
+
+   Older fields, still read and still written for MET:
+     met, metP       = MET's FIRST capture for the date (whatever its lead was)
+     ecmwf, ecmm, ecP, ecPmm, ecModel = the selected challenger's first capture,
+                       as logged before every model was captured (no longer written)
+     actual, actP    = ERA5 flags at the threshold in force when logged
+
+   Scores are computed only over dates where a forecast AND a truth value both
+   exist — so they mature over weeks, never fabricated from a retrospective call
+   (MET has no past archive). */
 const ERA5_LAG_DAYS = 5;
 /* Challenger models MET Malaysia can duel against. All are physics-based global
    models with clean archived precipitation in Open-Meteo (needed for scoring vs
@@ -831,7 +910,13 @@ function challengerKey(){
   return CHALLENGERS.some(c=>c.key===k)?k:DEFAULT_CHALLENGER;
 }
 function challengerInfo(){ return CHALLENGERS.find(c=>c.key===challengerKey())||CHALLENGERS[0]; }
-function logFor(farmId){ return (state.log[farmId] = state.log[farmId] || {}); }
+function logFor(farmId){ touchLog(farmId); return (state.log[farmId] = state.log[farmId] || {}); }
+/* a − b in whole days, for YYYY-MM-DD strings */
+function dayDiff(a,b){ return Math.round((Date.parse(a+'T00:00:00Z')-Date.parse(b+'T00:00:00Z'))/864e5); }
+function addDaysYMD(d,n){ return new Date(Date.parse(d+'T00:00:00Z')+n*864e5).toISOString().slice(0,10); }
+function maxKey(o){ let m=null; if(o) for(const k in o){ if(o[k]==null) continue; const n=+k; if(m==null||n>m) m=n; } return m; }
+function minKey(o){ let m=null; if(o) for(const k in o){ if(o[k]==null) continue; const n=+k; if(m==null||n<m) m=n; } return m; }
+const P3=a=>({morning:a[1]??null,afternoon:a[2]??null,night:a[3]??null});
 function todayYMD(){ return iso(new Date()); }
 function daysAgoYMD(n){ const d=new Date(); d.setDate(d.getDate()-n); return iso(d); }
 
@@ -976,6 +1061,7 @@ const I18N={
     errMet:'MET Malaysia 无回应或需权杖。此地点缺 MET 数据。',
     errRange:'请选择有效日期区间。',running:'对决进行中…',
     otherRegion:'其他 / 自订',currentLoc:'当前位置',
+    storageFull:'⚠ 储存空间已满，新记录无法保存。请到设置备份数据。',
     gpsErr:'无法取得定位',gpsOk:'已带入坐标',needName:'请填名称与坐标',
     softDeleted:'已删除',undo:'撤销',restored:'已恢复 ✓',
     restore:'恢复',bin:n=>`回收站（${n}）`,purge:'永久清空回收站',
@@ -1080,6 +1166,7 @@ const I18N={
     errMet:'MET Malaysia returned nothing / needs token. No MET data for this spot.',
     errRange:'Pick a valid date range.',running:'Running the duel…',
     otherRegion:'Other / Custom',currentLoc:'Current location',
+    storageFull:'⚠ Storage is full — new records cannot be saved. Back up your data in Settings.',
     gpsErr:'Location unavailable',gpsOk:'Coordinates filled',needName:'Enter name & coordinates',
     softDeleted:'Deleted',undo:'Undo',restored:'Restored ✓',
     restore:'Restore',bin:n=>`Recycle bin (${n})`,purge:'Empty recycle bin permanently',
@@ -1184,6 +1271,7 @@ const I18N={
     errNet:'Tidak dapat mengambil data. Semak sambungan anda dan cuba lagi.',
     errMet:'MET Malaysia tidak memulangkan apa-apa / memerlukan token. Tiada data MET untuk lokasi ini.',
     errRange:'Pilih julat tarikh yang sah.',running:'Duel sedang berjalan…',
+    storageFull:'⚠ Storan penuh — rekod baharu tidak dapat disimpan. Sandarkan data anda di Tetapan.',
     gpsErr:'Lokasi tidak tersedia',gpsOk:'Koordinat diisi',needName:'Masukkan nama & koordinat',
     softDeleted:'Dipadam',undo:'Buat asal',restored:'Dipulihkan ✓',
     restore:'Pulihkan',bin:n=>`Tong kitar semula (${n})`,purge:'Kosongkan tong kitar semula secara kekal',
@@ -1235,7 +1323,7 @@ function paintLabels(){
 const INTRO_KEY=NS+'.introCollapsed';
 function anyScored(){
   for(const id in state.log){ const lg=state.log[id];
-    for(const d in lg){ if(lg[d] && lg[d].actual!=null) return true; } }
+    for(const d in lg){ if(lg[d] && (lg[d].actual!=null||lg[d].actmm!=null||lg[d].gmm!=null)) return true; } }
   return false;
 }
 function updateIntro(){
@@ -1351,7 +1439,7 @@ function restoreLoc(id){
    drops their accumulated log so the store doesn't keep orphaned history. */
 function purgeBin(){
   if(!confirm(T().confirmPurge)) return;
-  for(const l of deletedLocs()){ delete state.log[l.id]; }
+  for(const l of deletedLocs()){ delete state.log[l.id]; touchLog(l.id); }
   state.locations=activeLocs();save();renderLocList();toast(T().purged);
 }
 
@@ -1428,7 +1516,7 @@ function saveLoc(){
       delete loc.metTown;                    // recompute nearest MET town for new coords
       // A big move makes the old forecast/actual log belong elsewhere → reset it.
       // A small move stays in the same grid cell, so the log is kept.
-      if(farMove) state.log[loc.id]={};
+      if(farMove){ state.log[loc.id]={}; touchLog(loc.id); }
       save();
       setActiveLoc(loc.id);endEdit();hideAddCard();renderLocList();updateLocHint();
       if(movedKm>0 && !farMove) status(t.keptNear(Math.round(movedKm*1000)),'ok');
@@ -1536,7 +1624,7 @@ function applyMetTown(nameEnc,km){
   if(name===auto){ delete loc.metTownChosen;delete loc.metTownKm; }  // back to auto
   else { loc.metTownChosen=name;loc.metTownKm=(km==null?null:km); }
   // moving MET town invalidates logged MET history for this farm (different point)
-  if(state.log[loc.id]) for(const d in state.log[loc.id]){ delete state.log[loc.id][d].met; delete state.log[loc.id][d].metP; }
+  if(state.log[loc.id]){ for(const d in state.log[loc.id]){ const e=state.log[loc.id][d]; delete e.met; delete e.metP; delete e.ml; } touchLog(loc.id); }
   save();closeMetSwitch();renderLocList();
   if(loc.id===activeLoc&&lastResult) runDuel();
   toast(T().metSwitched(name));
@@ -1606,24 +1694,38 @@ function periodFlags(mm, stored, th){
   }
   return out;
 }
-/* ---- Challenger model forecast for the coming days (Open-Meteo, keyless) ----
-   Which model fills the challenger slot is user-selectable (see CHALLENGERS). */
-async function fetchECMWFforecast(lat,lon,thresh){
-  const model=challengerKey();
-  // daily (for amount) AND hourly (for time-of-day periods)
-  const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`+
-    `&daily=precipitation_sum&hourly=precipitation&forecast_days=7&models=${model}&timezone=Asia%2FKuala_Lumpur`;
-  const r=await fetchRetry(u);if(!r.ok) throw new Error('challenger '+r.status);
-  const j=await r.json();const out={};
-  // hourly map: "YYYY-MM-DDTHH:00" → mm
-  const hours={};
-  (j.hourly?.time||[]).forEach((tkey,i)=>{ hours[tkey.slice(0,13)+':00']=j.hourly.precipitation[i]; });
-  (j.daily?.time||[]).forEach((d,i)=>{
-    const mm=j.daily.precipitation_sum[i];
-    const pmm=binHourlyToPeriodMm(hours,d);
-    out[d]={rain:mm==null?null:(mm>=thresh?1:0),mm,periods:periodFlags(pmm,null,thresh),periodMm:pmm};
-  });
+/* ---- Challenger forecasts for the coming days (Open-Meteo, keyless) ----
+   EVERY challenger model is captured in one call, not just the selected one:
+   a forecast not captured on the day is gone for good, and this way switching
+   challenger later compares from the same dates instead of starting from zero.
+   Returns { model: { "YYYY-MM-DD": {mm, pmm:{morning,afternoon,night}} } }. */
+function parseModels(j,models){
+  const out={};
+  for(const m of models){
+    // with several models Open-Meteo suffixes each variable with the model id
+    const sfx=models.length>1?'_'+m:'';
+    const dp=j.daily&&j.daily['precipitation_sum'+sfx];
+    const hp=j.hourly&&j.hourly['precipitation'+sfx];
+    if(!dp) continue;
+    const hours={};
+    if(hp) j.hourly.time.forEach((tkey,i)=>{ hours[tkey.slice(0,13)+':00']=hp[i]; });
+    const days={};
+    j.daily.time.forEach((d,i)=>{ if(dp[i]!=null) days[d]={mm:dp[i],pmm:binHourlyToPeriodMm(hours,d)}; });
+    if(Object.keys(days).length) out[m]=days;
+  }
   return out;
+}
+async function fetchChallengers(lat,lon){
+  const get=async models=>{
+    const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`+
+      `&daily=precipitation_sum&hourly=precipitation&forecast_days=7&models=${models.join(',')}&timezone=Asia%2FKuala_Lumpur`;
+    const r=await fetchRetry(u);if(!r.ok) throw new Error('challenger '+r.status);
+    return parseModels(await r.json(),models);
+  };
+  // One retired model id fails the whole multi-model call; the selected
+  // challenger alone must still get through.
+  try{ return await get(CHALLENGERS.map(c=>c.key)); }
+  catch(e){ console.warn('all-model fetch failed, retrying selected only:',e&&e.message); return await get([challengerKey()]); }
 }
 /* ---- ERA5 actuals to backfill past dates (Open-Meteo archive) ---- */
 async function fetchERA5actuals(lat,lon,from,to,thresh){
@@ -1641,10 +1743,78 @@ async function fetchERA5actuals(lat,lon,from,to,thresh){
   return out;
 }
 
+/* File one forecast under its lead time. First capture for a lead wins. */
+function putMetLead(e,lead,rain,p){
+  if(lead<0||lead>6||rain==null) return false;
+  const ml=(e.ml=e.ml||{}); if(ml[lead]!=null) return false;
+  p=p||{}; ml[lead]=[rain,p.morning??null,p.afternoon??null,p.night??null]; return true;
+}
+function putFcLead(e,model,lead,mm,pmm){
+  if(lead<0||lead>6||mm==null) return false;
+  const fc=(e.fc=e.fc||{}), fm=(fc[model]=fc[model]||{}); if(fm[lead]!=null) return false;
+  pmm=pmm||{}; fm[lead]=[mm,pmm.morning??null,pmm.afternoon??null,pmm.night??null]; return true;
+}
+/* Which forecast is being scored: 'first' = the first one logged for each date
+   (how the app has always scored), or a fixed lead 0…6 days ahead. */
+function leadSetting(){
+  const v=state.settings&&state.settings.lead;
+  return (v==null||v==='first'||!(+v>=0&&+v<=6))?'first':+v;
+}
+/* MET's call for a log entry at the given lead → {rain, P} or null. */
+function metAt(e,lead){
+  if(lead==='first'){
+    if(e.met!=null||e.metP) return {rain:e.met==null?null:e.met,P:e.metP||null};
+    lead=maxKey(e.ml); if(lead==null) return null;
+  }
+  const v=e.ml&&e.ml[lead]; return v?{rain:v[0],P:P3(v)}:null;
+}
+/* A challenger's forecast for a log entry at the given lead →
+   {mm, rain (stored flag, legacy rows only), pmm, P (stored period flags)} or null. */
+function chalAt(e,model,lead){
+  if(lead==='first'){
+    // Rows logged before every model was captured carry one untagged or
+    // tagged challenger; untagged means ECMWF IFS (always the default).
+    if((e.ecmwf!=null||e.ecmm!=null)&&(e.ecModel||'ecmwf_ifs')===model)
+      return {mm:e.ecmm==null?null:e.ecmm,rain:e.ecmwf==null?null:e.ecmwf,pmm:e.ecPmm||null,P:e.ecP||null};
+    lead=maxKey(e.fc&&e.fc[model]); if(lead==null) return null;
+  }
+  const v=e.fc&&e.fc[model]&&e.fc[model][lead];
+  return v?{mm:v[0],rain:null,pmm:P3(v),P:null}:null;
+}
+/* One row per logged date for a farm, under the CURRENT threshold, challenger
+   and lead setting. The scoreboard and the cross-farm ranking both score these
+   rows, so they cannot disagree. Truth is the farm's own gauge reading when
+   one was entered, else ERA5. */
+function farmRows(loc){
+  const lg=state.log[loc.id]||{}, th=getThresh(), model=challengerKey(), L=leadSetting();
+  // Re-derive rain/dry from stored mm at the CURRENT threshold. MET has no mm,
+  // so its flag (captured at log time) is used as-is.
+  const bin=(mm,stored)=> mm==null ? (stored==null?null:stored) : (mm>=th?1:0);
+  return Object.keys(lg).sort().map(d=>{
+    const e=lg[d], m=metAt(e,L), c=chalAt(e,model,L);
+    const gauge=e.gmm!=null;
+    const actmm=gauge?e.gmm:(e.actmm==null?null:e.actmm);
+    return {
+      date:d, gauge, actmm,
+      obs: bin(actmm, gauge?null:e.actual),
+      // Trace-rain day: some rain fell but below the threshold (0 < mm < th).
+      // In Malaysia that's a dark-sky drizzle day — ambiguous for a rain/dry
+      // duel, so the WHOLE day is excluded from BOTH models' scores
+      // (symmetric: neither side may be punished or excused alone).
+      trace:(actmm!=null && actmm>0 && actmm<th),
+      met: m?m.rain:null, metP: m?m.P:null,
+      ecmwf: c?bin(c.mm,c.rain):null, ecmm: c&&c.mm!=null?c.mm:null,
+      ecP: c?periodFlags(c.pmm,c.P,th):null,
+      actP: periodFlags(e.actPmm,e.actP,th)
+    };
+  });
+}
+
 /* ---- shared logging core: capture MET+ECMWF forecasts and backfill ERA5
    for ONE farm. Pure data work, no UI. Returns {gotMet, metTown}. ---- */
 async function logOneFarm(loc, thresh){
-  const lg=logFor(loc.id);
+  await logReady;   // never write into a log that has not finished loading
+  const lg=logFor(loc.id), today=todayYMD();
   let gotMet=false, metTown=loc.metTownChosen||nearestTown(+loc.lat,+loc.lon).town, noProxy=false;
   let metStale=null, chalFailed=false;
   // 1. MET forecast (via proxy), honoring a user-chosen MET location
@@ -1655,6 +1825,7 @@ async function logOneFarm(loc, thresh){
     for(const [d,rain] of Object.entries(m.met)){
       lg[d]=lg[d]||{};if(lg[d].met==null) lg[d].met=rain;   // never overwrite an earlier capture
       if(lg[d].metP==null && m.metP && m.metP[d]) lg[d].metP=m.metP[d];   // MET periods
+      putMetLead(lg[d],dayDiff(d,today),rain,m.metP&&m.metP[d]);
     }
     gotMet=m.matched>0;
   }catch(e){
@@ -1663,19 +1834,18 @@ async function logOneFarm(loc, thresh){
     // fine, the data is not, and the user needs to know which.
     else if(String(e.message)==='stale-met') metStale=e.newest||'?';
   }
-  // 2. Challenger model forecast (tag which model produced it, so switching
-  //    challengers never mixes two models' data in one score)
+  // 2. Challenger forecasts — every model, filed by lead time
   let gotChal=false;
   try{
-    const model=challengerKey();
-    const ec=await fetchECMWFforecast(+loc.lat,+loc.lon,thresh);
-    for(const [d,v] of Object.entries(ec)){
-      lg[d]=lg[d]||{};
-      if(lg[d].ecmwf==null || lg[d].ecModel!==model){
-        lg[d].ecmwf=v.rain;lg[d].ecmm=v.mm;lg[d].ecP=v.periods;lg[d].ecPmm=v.periodMm;lg[d].ecModel=model;
+    const all=await fetchChallengers(+loc.lat,+loc.lon);
+    for(const [model,days] of Object.entries(all))
+      for(const [d,v] of Object.entries(days)){
+        lg[d]=lg[d]||{};
+        putFcLead(lg[d],model,dayDiff(d,today),v.mm,v.pmm);
       }
-    }
-    gotChal=Object.keys(ec).length>0;
+    gotChal=Object.keys(all).length>0;
+    // The other models are a bonus; the SELECTED challenger missing is a failure.
+    if(!all[challengerKey()]) chalFailed=true;
   }catch(e){
     // Was a bare catch{}. A challenger that stops responding — Open-Meteo
     // retiring a model id, say — then produced no message anywhere and the
@@ -1988,50 +2158,15 @@ function liveRegions(){
 /* ===================== RUN DUEL (score the accumulated log) ================== */
 function runDuel(){
   const t=T();
+  if(!logLoaded) return;   // the log is still loading; boot re-runs this when it is ready
   const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted);
   if(!loc){status(t.selectFirst,'err');return;}
   clearStatus();   // a farm is active now — clear any stale "pick a location" error
-  const lg=state.log[loc.id]||{};
   const auto=nearestTown(+loc.lat,+loc.lon);
   const nt={ town: loc.metTownChosen||auto.town,
              km: loc.metTownChosen?(loc.metTownKm!=null?loc.metTownKm:null):auto.km,
              chosen: !!loc.metTownChosen };
-  // score only dates with a real actual; show all dates in the log table.
-  // Re-derive ECMWF & ERA5 rain/dry from stored mm at the CURRENT threshold so
-  // changing the threshold re-scores them correctly. MET has no mm, so its
-  // stored flag (captured at log time) is used as-is.
-  const th=getThresh();
-  const model=challengerKey();
-  const bin=(mm,stored)=> mm==null ? (stored==null?null:stored) : (mm>=th?1:0);
-  const rows=Object.keys(lg).sort().map(d=>{
-    // only count challenger data captured by the CURRENTLY selected model;
-    // days logged under a different challenger are ignored for its columns.
-    // Rows predating the ecModel tag carry no id; defaulting them to
-    // 'ecmwf_ifs' is not a guess — the challenger has always been ECMWF IFS
-    // 9 km (confirmed). If a differently-sourced challenger is ever
-    // back-filled, tag it at write time rather than widening this default.
-    const match=(lg[d].ecModel||'ecmwf_ifs')===model;
-    const met=lg[d].met==null?null:lg[d].met;
-    const actmm=lg[d].actmm==null?null:lg[d].actmm;
-    // Trace-rain day: some rain fell but below the threshold (0 < mm < th).
-    // In Malaysia that's a dark-sky drizzle day — ambiguous for a rain/dry
-    // duel, so the WHOLE day is excluded from BOTH models' scores
-    // (symmetric: neither side may be punished or excused alone).
-    // Still displayed in the table, marked ≈.
-    const trace=(actmm!=null && actmm>0 && actmm<th);
-    return {
-      date:d,
-      obs: bin(actmm, lg[d].actual),
-      met,
-      trace,
-      ecmwf: match? bin(lg[d].ecmm, lg[d].ecmwf) : null,
-      ecmm: match&&lg[d].ecmm!=null?lg[d].ecmm:null,
-      actmm,
-      metP:lg[d].metP||null,
-      ecP: match?periodFlags(lg[d].ecPmm,lg[d].ecP,th):null,
-      actP: periodFlags(lg[d].actPmm,lg[d].actP,th)
-    };
-  });
+  const rows=farmRows(loc);
   finishDuel(loc,nt,rows,false);
   if(rankCardOpen) renderRanking();
   updateIntro();
@@ -2066,26 +2201,11 @@ function amountMAE(rows){
 }
 
 /* ===================== cross-farm ranking ===================== */
-/* Score one farm from its log (dates with a real actual only).
-   MUST mirror runDuel's rules exactly, or the ranking and the scorecard
-   disagree: (1) only count challenger data captured by the CURRENTLY selected
-   model; (2) re-derive rain/dry from stored mm at the CURRENT threshold. */
+/* Score one farm from its log — the same rows the scoreboard uses. */
 function scoreFarm(loc){
-  const lg=state.log[loc.id]||{};
-  const th=getThresh(), model=challengerKey();
-  const bin=(mm,stored)=> mm==null ? (stored==null?null:stored) : (mm>=th?1:0);
-  const pairsMet=[],pairsEc=[];
-  for(const d of Object.keys(lg)){
-    const a=bin(lg[d].actmm, lg[d].actual); if(a==null) continue;
-    // Trace-rain day (0<mm<th): ambiguous drizzle — the whole day is excluded
-    // from BOTH models' scores (same symmetric rule as runDuel).
-    if(lg[d].actmm!=null && lg[d].actmm>0 && lg[d].actmm<th) continue;
-    const match=(lg[d].ecModel||'ecmwf_ifs')===model;
-    pairsMet.push({fc:lg[d].met==null?null:lg[d].met,obs:a});
-    pairsEc.push({fc:match?bin(lg[d].ecmm,lg[d].ecmwf):null,obs:a});
-  }
-  const met=score(pairsMet),ec=score(pairsEc);
-  return {loc,met,ec,scored:pairsMet.length};
+  const rows=farmRows(loc).filter(r=>r.obs!=null&&!r.trace);
+  return {loc,met:score(rows.map(r=>({fc:r.met,obs:r.obs}))),
+          ec:score(rows.map(r=>({fc:r.ecmwf,obs:r.obs}))),scored:rows.length};
 }
 
 let logCardOpen=true;   // day-by-day fetch log: expanded by default (verify app works at a glance)
@@ -2615,9 +2735,15 @@ if(FIRST_LAUNCH){ showLangPick(true); $('#langpick').focus(); }   // synchronous
 setLocCard(activeLocs().length===0);   // collapsed when seeds exist; open when empty
 // Returning user: restore their last-viewed farm's scorecard. First launch:
 // activeLoc is null, so nothing shows until they pick a farm.
-if(activeLoc){ runDuel(); } else { updateLocHint(); }
-/* fire-and-forget once-per-day auto-log; never blocks first paint */
-setTimeout(()=>{ autoLogOnOpen().catch(()=>{}); }, 400);
+// The log loads asynchronously (IndexedDB): paint the last saved scorecard at
+// once, then re-score for real the moment the log is in memory.
+if(activeLoc){ if(lastResult) renderResult(); } else { updateLocHint(); }
+logReady.then(()=>{
+  if(activeLoc) runDuel();
+  updateIntro(); if(rankCardOpen) renderRanking();
+  /* fire-and-forget once-per-day auto-log; never blocks first paint */
+  setTimeout(()=>{ autoLogOnOpen().catch(()=>{}); }, 400);
+});
 
 /* Register the service worker for offline support. Must be a file at the
    site root (./sw.js) — a blob URL can't cache the app shell.
