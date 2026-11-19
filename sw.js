@@ -92,7 +92,7 @@ self.addEventListener('fetch', (e) => {
         return fetch(req).then((res) => {
           if (res.ok) {
             const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(INDEX, copy));
+            caches.open(CACHE).then((c) => c.put(INDEX, copy)).catch(() => {});   // a full disk must not break the response
           }
           return res;
         });
@@ -107,7 +107,7 @@ self.addEventListener('fetch', (e) => {
       return fetch(req).then((res) => {
         if (res && res.status === 200 && res.type === 'basic') {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
         }
         return res;
       });

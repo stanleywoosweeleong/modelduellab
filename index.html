@@ -896,15 +896,24 @@ async function idbLoadLogs(){
   const [keys,vals]=await Promise.all([idbReq(st.getAllKeys()),idbReq(st.getAll())]);
   const out={}; keys.forEach((k,i)=>{ out[k]=vals[i]; }); return out;
 }
+/* Write every dirty farm. The returned promise settles only when this write AND
+   any write still in flight have finished, so `await flushLog()` really means
+   "everything touched so far is on disk". */
+let _flushing=Promise.resolve();
 function flushLog(){
-  if(logStore!=='idb'||!dirtyFarms.size) return Promise.resolve();
-  const ids=[...dirtyFarms]; dirtyFarms.clear();
-  return new Promise((res,rej)=>{
-    const tx=idb.transaction(IDB_STORE,'readwrite'),st=tx.objectStore(IDB_STORE);
-    for(const id of ids){ if(state.log[id]) st.put(state.log[id],id); else st.delete(id); }
-    tx.oncomplete=()=>res();
-    tx.onerror=tx.onabort=()=>{ ids.forEach(id=>dirtyFarms.add(id)); rej(tx.error); };
-  });
+  if(logStore!=='idb') return Promise.resolve();
+  if(dirtyFarms.size){
+    const ids=[...dirtyFarms]; dirtyFarms.clear();
+    const p=new Promise((res,rej)=>{
+      const tx=idb.transaction(IDB_STORE,'readwrite'),st=tx.objectStore(IDB_STORE);
+      for(const id of ids){ if(state.log[id]) st.put(state.log[id],id); else st.delete(id); }
+      tx.oncomplete=()=>res();
+      tx.onerror=tx.onabort=()=>{ ids.forEach(id=>dirtyFarms.add(id)); rej(tx.error||new Error('log write failed')); };
+    });
+    const prev=_flushing;
+    _flushing=prev.then(()=>p,()=>p);
+  }
+  return _flushing;
 }
 function storageTrouble(e){
   console.warn('save failed',e);
@@ -2012,6 +2021,11 @@ async function logOneFarm(loc, thresh){
   // logic / badge / coverage use. Only stamp on success, so a failed farm is
   // retried by the next run.
   if(gotToday) loc.lastFetch=todayYMD();
+  // logFor() marked this farm dirty before the fetches began. Any save() that
+  // ran while they were in flight (picking another farm, a setting…) has already
+  // written the log as it was THEN and cleared the mark — so mark it again now
+  // that the captures are in, or the caller's save() would persist nothing.
+  touchLog(loc.id);
   return {gotMet,metTown,noProxy,gotToday,metStale,chalFailed};
 }
 
@@ -2022,7 +2036,8 @@ async function logOneFarm(loc, thresh){
    depends on the app being opened daily. Same rules as logging on the phone:
    each forecast is filed under its lead time and nothing already captured is
    overwritten. Farms added on this phone are not in those files. */
-const SYNC_KEY=NS+'.serverSync';       // newest capture date already merged
+const SYNC_KEY=NS+'.serverSync';       // newest capture date already merged AND saved
+const SYNC_FIRST_DAYS=45;              // how far back a first-ever sync reaches
 const coordKey=(lat,lon)=>(+lat).toFixed(4)+','+(+lon).toFixed(4);
 function mergeCapture(cap){
   if(!cap||!cap.date||!cap.farms) return 0;
@@ -2062,27 +2077,38 @@ async function syncServerCaptures(){
   if(location.protocol==='file:'||navigator.onLine===false||_syncing) return;
   if(Date.now()-_lastSyncTry<30*60*1000) return;       // at most every half hour
   _syncing=true; _lastSyncTry=Date.now();
+  let days=0,farms=0;
   try{
     await logReady;
     const r=await fetch('./data/index.json',{cache:'no-cache'}); if(!r.ok) return;
     const idx=await r.json();
     // Re-read the last merged day too: the midday run tops up the morning file.
     const last=localStorage.getItem(SYNC_KEY)||'';
-    const todo=(idx.dates||[]).filter(d=>d>=last).sort().slice(-45);
-    let days=0,farms=0;
+    let todo=(idx.dates||[]).filter(d=>d>=last).sort();
+    // A phone that has synced before takes EVERYTHING outstanding, oldest first —
+    // capping it would move the cursor past history it never read. Only a first
+    // ever sync is limited, to the most recent SYNC_FIRST_DAYS (a deliberate
+    // starting point, not a skipped backlog).
+    if(!last) todo=todo.slice(-SYNC_FIRST_DAYS);
     for(const d of todo){
       const cr=await fetch(`./data/captures/${d}.json`,{cache:'no-cache'}); if(!cr.ok) break;
       const n=mergeCapture(await cr.json());
       if(n){ days++; farms=Math.max(farms,n); }
+      // The cursor moves only once this file's captures are safely stored: a
+      // failed write or a later failed download must leave it pointing at the
+      // last day that really was saved, so the next sync retries from there.
+      save(); await flushLog();
+      if(logStore!=='idb'&&_quotaWarned) throw new Error('log not saved');
       localStorage.setItem(SYNC_KEY,d);
     }
-    if(days){
-      save();
+  }catch(e){ console.warn('server capture sync stopped:',e&&e.message); }
+  finally{
+    _syncing=false;
+    if(days){   // show whatever did get merged, even if a later file failed
       if(activeLoc) runDuel(); else if(rankCardOpen) renderRanking();
       toast(T().syncDone(days,farms));
     }
-  }catch(e){ console.warn('server capture sync failed:',e&&e.message); }
-  finally{ _syncing=false; }
+  }
 }
 
 /* ===================== LOG TODAY (manual, active farm, with UI) ============== */
