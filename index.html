@@ -313,6 +313,13 @@
   #langpick button:active{background:var(--accent);border-color:var(--accent);color:#fff}
   body.picking{overflow:hidden}
   .legend{font-size:.72rem;color:var(--ink-mid);line-height:1.7;margin-top:9px}
+  .lead-row{display:flex;align-items:center;gap:10px;margin:0 0 10px}
+  .lead-row label{font-size:.76rem;color:var(--ink-mid);font-weight:500;flex-shrink:0}
+  .lead-row select{flex:1;min-width:0;padding:8px 10px;font-size:.82rem}
+  .lead-hint{font-size:.7rem;color:var(--ink-dim);line-height:1.5;margin:-4px 0 10px}
+  .act-cell{cursor:pointer}
+  .gauge-mark{font-size:.72rem}
+  .data-hint{font-size:.72rem;color:var(--ink-dim);line-height:1.6;margin-top:8px}
   details{margin-top:9px}summary{cursor:pointer;font-size:.78rem;color:var(--accent);font-weight:600}
   .foot{text-align:center;color:var(--ink-dim);font-size:.68rem;margin-top:16px;line-height:1.6;white-space:pre-line}
   .empty{text-align:center;color:var(--ink-dim);padding:22px 10px;font-size:.84rem}
@@ -436,6 +443,25 @@
     </div>
   </div>
 
+  <!-- RAIN-GAUGE reading modal -->
+  <div id="gaugeModal" class="modal-back" style="display:none" onclick="if(event.target===this)closeGauge()">
+    <div class="modal">
+      <div class="modal-hd">
+        <span id="t-gauge-title">雨量筒读数</span>
+        <span class="modal-x" onclick="closeGauge()">✕</span>
+      </div>
+      <div class="modal-sub" id="gaugeFarm"></div>
+      <label class="fld" id="t-gauge-date" for="gaugeDate">日期</label>
+      <input type="date" id="gaugeDate" onchange="gaugeDateChanged()">
+      <label class="fld" id="t-gauge-mm" for="gaugeMm">当天雨量 (mm)</label>
+      <input type="number" id="gaugeMm" min="0" step="0.1" inputmode="decimal">
+      <div class="data-hint" id="gaugeHint"></div>
+      <button class="btn" onclick="saveGauge()" style="margin-top:12px"><span id="t-gauge-save">保存读数</span></button>
+      <button class="btn ghost" id="gaugeDel" onclick="deleteGauge()"><span id="t-gauge-del">移除读数</span></button>
+      <div style="height:20px"></div>
+    </div>
+  </div>
+
   <!-- SETTINGS modal (cog) -->
   <div id="settingsModal" class="modal-back" style="display:none" onclick="if(event.target===this)closeSettings()">
     <div class="modal">
@@ -464,6 +490,13 @@
         <summary id="t-thresh-help-sum">怎样才算「下雨」？</summary>
         <div class="thresh-help-body" id="threshHelpBody"></div>
       </details>
+
+      <label class="fld" id="t-data" style="margin-top:16px">数据</label>
+      <button class="btn ghost" onclick="backupAll()"><span id="t-backup">备份全部数据</span></button>
+      <button class="btn ghost" onclick="$('#restoreFile').click()"><span id="t-restore">从备份恢复</span></button>
+      <input type="file" id="restoreFile" accept=".json,application/json" style="display:none" onchange="restoreFromFile(this)">
+      <button class="btn ghost" onclick="exportAllXLS()"><span id="t-exportall">导出全部地点 Excel</span></button>
+      <div class="data-hint" id="t-data-hint"></div>
 
       <div class="app-link">
         <div class="app-qr">
@@ -527,18 +560,23 @@
     <h2 style="margin-bottom:4px">🏆 <span id="t-board">记分板</span></h2>
     <div id="board-loc" class="board-loc"></div>
     <div class="met-match" id="metMatch" onclick="switchActiveMet()"></div>
+    <div class="lead-row">
+      <label for="leadSel" id="t-lead">评分的预报</label>
+      <select id="leadSel" onchange="saveLead()"></select>
+    </div>
+    <div class="lead-hint" id="leadHint" style="display:none"></div>
     <div class="scoreboard">
       <div class="team met">
         <span class="crown" id="crown-met" style="display:none">👑</span>
         <div class="name">MET MALAYSIA</div>
         <div class="csi" id="met-csi">–</div><div class="csi-lab" id="met-csi-lab">CSI</div>
-        <div class="metrics"><div><span class="mlab" id="met-pod-lab">POD</span><b id="met-pod">–</b></div><div><span class="mlab" id="met-far-lab">FAR</span><b id="met-far">–</b></div></div>
+        <div class="metrics"><div><span class="mlab" id="met-pod-lab">POD</span><b id="met-pod">–</b></div><div><span class="mlab" id="met-far-lab">FAR</span><b id="met-far">–</b></div><div><span class="mlab" id="met-bias-lab">Bias</span><b id="met-bias">–</b></div></div>
       </div>
       <div class="team ecmwf">
         <span class="crown" id="crown-ecmwf" style="display:none">👑</span>
         <div class="name" id="ecmwf-name">ECMWF</div>
         <div class="csi" id="ecmwf-csi">–</div><div class="csi-lab" id="ecmwf-csi-lab">CSI</div>
-        <div class="metrics"><div><span class="mlab" id="ecmwf-pod-lab">POD</span><b id="ecmwf-pod">–</b></div><div><span class="mlab" id="ecmwf-far-lab">FAR</span><b id="ecmwf-far">–</b></div></div>
+        <div class="metrics"><div><span class="mlab" id="ecmwf-pod-lab">POD</span><b id="ecmwf-pod">–</b></div><div><span class="mlab" id="ecmwf-far-lab">FAR</span><b id="ecmwf-far">–</b></div><div><span class="mlab" id="ecmwf-bias-lab">Bias</span><b id="ecmwf-bias">–</b></div></div>
       </div>
     </div>
     <div class="verdict" id="verdict"></div>
@@ -557,6 +595,8 @@
       <span class="master-right"><span class="master-hint" id="logHint"></span> <span class="chev master-chev" id="logChev">▼</span></span>
     </h2>
     <div id="log-body"></div>
+    <button class="btn ghost export-btn" id="gaugeBtn" onclick="openGauge()">
+      <span id="t-gauge-btn">📏 输入我的雨量筒读数</span></button>
     <button class="btn ghost export-btn" id="exportBtn" onclick="exportFarmXLS()">
       <span id="t-export">📥 导出 Excel（本农场原始数据）</span></button>
   </div>
@@ -662,7 +702,9 @@ function score(pairs){
     else if(p.fc===1&&p.obs===0)F++;else C++;
   }
   return {H,M,F,C,
-    pod:(H+M)?H/(H+M):null, far:(H+F)?F/(H+F):null, csi:(H+M+F)?H/(H+M+F):null, n:H+M+F+C};
+    pod:(H+M)?H/(H+M):null, far:(H+F)?F/(H+F):null, csi:(H+M+F)?H/(H+M+F):null,
+    // frequency bias: rain days forecast ÷ rain days observed (1 = unbiased)
+    bias:(H+M)?(H+F)/(H+M):null, n:H+M+F+C};
 }
 
 /* ===================== SEED FARMS (verified, from RainScore Lab) ===================== */
@@ -790,14 +832,16 @@ const FARM_REGION_MOVES = [ ["Tras 都赖","Bentong 文冬","Raub 劳勿"] ];
 const DEFAULT_MET_PROXY = 'https://modelduel-met.standphoto.workers.dev';
 
 /* ===================== state ===================== */
+/* Fill in anything an older save (or a backup file) may lack. */
+function normalizeState(s){
+  if(!s.log) s.log={};            // per-farm forecast/actual history
+  if(!s.settings) s.settings={metProxy:DEFAULT_MET_PROXY,autoLog:'off'};
+  if(!s.settings.metProxy) s.settings.metProxy=DEFAULT_MET_PROXY;  // back-fill if never set
+  if(s.settings.autoLog==null) s.settings.autoLog='off';
+  return s;
+}
 function load(){
-  try{const s=JSON.parse(localStorage.getItem(STORE_KEY));if(s&&s.locations){
-    if(!s.log) s.log={};            // per-farm forecast/actual history
-    if(!s.settings) s.settings={metProxy:DEFAULT_MET_PROXY,autoLog:'off'};
-    if(!s.settings.metProxy) s.settings.metProxy=DEFAULT_MET_PROXY;  // back-fill if never set
-    if(s.settings.autoLog==null) s.settings.autoLog='off';
-    return s;
-  }}catch(e){}
+  try{const s=JSON.parse(localStorage.getItem(STORE_KEY));if(s&&s.locations) return normalizeState(s);}catch(e){}
   return {locations:[],seeded:false,seedVersion:0,lastResult:null,lang:null,
           log:{},settings:{metProxy:DEFAULT_MET_PROXY,autoLog:'off'}};
 }
@@ -1006,12 +1050,13 @@ const I18N={
     exportEmpty:'本农场暂无记录可导出',
     amountLine:(mae,n,m)=>`🌧 雨量准度：${m} 平均偏差 <b>${mae} mm/日</b>（对比 ERA5 实测，${n} 天）· MET 无雨量数据`,
     periodTitle:'时段准度 · 综合（越高越好）',pMorning:'早',pAfternoon:'午',pNight:'夜',
-    labCSI:'综合',labPOD:'命中率',labFAR:'空报率',
+    labCSI:'综合',labPOD:'命中率',labFAR:'空报率',labBias:'偏差',
     periodFoot:'早 6-12 · 午 12-18 · 夜 18-24 时 · 对比 ERA5 实测',
     explainBody:'命中率（POD）：实际有雨、被成功预报到的比例，越高越好。'+
       '空报率（FAR）：预报有雨、实际却没下的比例，越低越好。'+
       '综合（CSI）：把命中、漏报、空报合起来的总分＝命中÷(命中+漏报+空报)，0–1，越高越好，最能代表整体表现。'+
-      '两个模型都以 ERA5 实测雨量为真值来评分，不是彼此互相比较。',
+      '偏差：预报有雨的天数 ÷ 实际有雨的天数。大于 1 表示报雨报得太多，小于 1 表示报得太少，1 最理想。'+
+      '两个模型都以 ERA5 实测雨量为真值来评分（你输入了雨量筒读数的日子则以读数为准），不是彼此互相比较。',
     matLive:n=>`已比对 ${n} 天真实数据`,
     matThin:'样本偏少，评分仅供参考（建议 ≥14 天）',
     matScored:n=>`已评分 ${n} 天（有实测）`,matPending:n=>`${n} 天待实测回填`,logRows:n=>`${n} 天记录`,
@@ -1062,6 +1107,18 @@ const I18N={
     errRange:'请选择有效日期区间。',running:'对决进行中…',
     otherRegion:'其他 / 自订',currentLoc:'当前位置',
     storageFull:'⚠ 储存空间已满，新记录无法保存。请到设置备份数据。',
+    leadLabel:'评分的预报',leadFirst:'最早记录的那次',lead0:'当天发布的',leadN:n=>`提前 ${n} 天发布的`,
+    leadHint:'固定提前天数的数据，从本功能加入那天起才开始累积；更早的日期只有「最早记录的那次」。',
+    gaugeBtn:'📏 输入我的雨量筒读数',gaugeTitle:'雨量筒读数',gaugeMm:'当天雨量 (mm)',gaugeSave:'保存读数',gaugeDel:'移除读数',
+    gaugeHint:era=>`请填该日历日（午夜到午夜）的总雨量。你的读数会取代 ERA5，成为当天的实测。${era!=null?`ERA5 当天是 ${era} mm。`:''}`,
+    gaugeSaved:'雨量筒读数已保存',gaugeRemoved:'雨量筒读数已移除',gaugeBad:'请填今天或之前的日期，以及 0 mm 或以上的雨量',
+    gaugeLegend:'📏 = 当天以你自己的雨量筒读数为实测（取代 ERA5）。点任何一格「实测」即可输入。',
+    dataLabel:'数据',backup:'备份全部数据',restore2:'从备份恢复',exportAll:'导出全部地点 Excel',
+    dataHint:'所有记录只存在这台手机里，而且过去的预报无法重新抓取。请定期备份，把文件存到别处。',
+    backupDone:(f,n)=>`已备份 ${f} 个地点、${n} 天记录`,
+    restoreBad:'这不是有效的 ModelDuel 备份文件',
+    restoreConfirm:(when,f,n)=>`用 ${when} 的备份（${f} 个地点、${n} 天记录）取代这台手机上的全部数据？此操作无法撤销。`,
+    exportAllDone:(f,n)=>`已导出 ${f} 个地点、${n} 行 (.xlsx)`,
     gpsErr:'无法取得定位',gpsOk:'已带入坐标',needName:'请填名称与坐标',
     softDeleted:'已删除',undo:'撤销',restored:'已恢复 ✓',
     restore:'恢复',bin:n=>`回收站（${n}）`,purge:'永久清空回收站',
@@ -1111,12 +1168,13 @@ const I18N={
     exportEmpty:'No records to export for this farm yet',
     amountLine:(mae,n,m)=>`🌧 Amount accuracy: ${m} off by <b>${mae} mm/day</b> avg (vs ERA5 actual, ${n} days) · MET has no mm data`,
     periodTitle:'Time-of-day accuracy · CSI (higher is better)',pMorning:'Morn',pAfternoon:'Aft',pNight:'Night',
-    labCSI:'CSI',labPOD:'POD',labFAR:'FAR',
+    labCSI:'CSI',labPOD:'POD',labFAR:'FAR',labBias:'Bias',
     periodFoot:'Morn 6-12 · Aft 12-18 · Night 18-24h · vs ERA5 actual',
     explainBody:'Hit rate (POD): of the days it actually rained, the share correctly forecast — higher is better. '+
       'False-alarm rate (FAR): of the days rain was forecast, the share that stayed dry — lower is better. '+
       'Overall (CSI): hits, misses and false alarms combined = hits ÷ (hits + misses + false alarms), 0–1, higher is better — the single best summary. '+
-      'Both models are scored against ERA5 actual rainfall as truth, not against each other.',
+      'Bias: days rain was forecast ÷ days it actually rained. Above 1 means it forecasts rain too often, below 1 too rarely; 1 is ideal. '+
+      'Both models are scored against ERA5 actual rainfall as truth (or your own rain-gauge reading where you entered one), not against each other.',
     matLive:n=>`${n} days of real data compared`,
     matThin:'Small sample — indicative only (aim ≥14 days)',
     matScored:n=>`${n} days scored (with actuals)`,matPending:n=>`${n} awaiting ERA5 backfill`,logRows:n=>`${n} days logged`,
@@ -1167,6 +1225,18 @@ const I18N={
     errRange:'Pick a valid date range.',running:'Running the duel…',
     otherRegion:'Other / Custom',currentLoc:'Current location',
     storageFull:'⚠ Storage is full — new records cannot be saved. Back up your data in Settings.',
+    leadLabel:'Forecast scored',leadFirst:'First one logged',lead0:'Made the same day',leadN:n=>`Made ${n} day${n>1?'s':''} ahead`,
+    leadHint:'Fixed lead times only build up from the day this feature was added; earlier dates have just the first forecast logged.',
+    gaugeBtn:'📏 Enter my rain-gauge reading',gaugeTitle:'Rain-gauge reading',gaugeMm:'Rainfall that day (mm)',gaugeSave:'Save reading',gaugeDel:'Remove reading',
+    gaugeHint:era=>`Enter the total for the calendar day, midnight to midnight. Your reading replaces ERA5 as the truth for that day.${era!=null?` ERA5 has ${era} mm.`:''}`,
+    gaugeSaved:'Gauge reading saved',gaugeRemoved:'Gauge reading removed',gaugeBad:'Enter a date up to today and a rainfall of 0 mm or more',
+    gaugeLegend:'📏 = your own rain-gauge reading is the truth for that day (instead of ERA5). Tap any "Actual" cell to enter one.',
+    dataLabel:'Data',backup:'Back up all data',restore2:'Restore from backup',exportAll:'Export all farms to Excel',
+    dataHint:'All records live only on this phone, and past forecasts cannot be fetched again. Back up regularly and keep the file somewhere else.',
+    backupDone:(f,n)=>`Backed up ${f} farms, ${n} logged days`,
+    restoreBad:'That is not a valid ModelDuel backup file',
+    restoreConfirm:(when,f,n)=>`Replace everything on this phone with the backup from ${when} (${f} farms, ${n} logged days)? This cannot be undone.`,
+    exportAllDone:(f,n)=>`Exported ${f} farms, ${n} rows (.xlsx)`,
     gpsErr:'Location unavailable',gpsOk:'Coordinates filled',needName:'Enter name & coordinates',
     softDeleted:'Deleted',undo:'Undo',restored:'Restored ✓',
     restore:'Restore',bin:n=>`Recycle bin (${n})`,purge:'Empty recycle bin permanently',
@@ -1217,12 +1287,13 @@ const I18N={
     exportEmpty:'Belum ada rekod untuk dieksport bagi kebun ini',
     amountLine:(mae,n,m)=>`🌧 Ketepatan jumlah: ${m} tersasar purata <b>${mae} mm/hari</b> (berbanding data sebenar ERA5, ${n} hari) · MET tiada data mm`,
     periodTitle:'Ketepatan mengikut waktu · CSI (lebih tinggi lebih baik)',pMorning:'Pagi',pAfternoon:'Ptg',pNight:'Malam',
-    labCSI:'CSI',labPOD:'POD',labFAR:'FAR',
+    labCSI:'CSI',labPOD:'POD',labFAR:'FAR',labBias:'Bias',
     periodFoot:'Pagi 6-12 · Petang 12-18 · Malam 18-24j · berbanding data sebenar ERA5',
     explainBody:'Kadar kena (POD): daripada hari yang benar-benar hujan, bahagian yang diramal dengan betul — lebih tinggi lebih baik. '+
       'Kadar amaran palsu (FAR): daripada hari yang diramal hujan, bahagian yang kekal kering — lebih rendah lebih baik. '+
       'Keseluruhan (CSI): gabungan kena, terlepas dan amaran palsu = kena ÷ (kena + terlepas + amaran palsu), 0–1, lebih tinggi lebih baik — ringkasan tunggal terbaik. '+
-      'Kedua-dua model diskor berbanding hujan sebenar ERA5 sebagai rujukan, bukan berbanding satu sama lain.',
+      'Bias: bilangan hari hujan diramal ÷ bilangan hari yang benar-benar hujan. Melebihi 1 bermakna terlalu kerap meramal hujan, kurang daripada 1 terlalu jarang; 1 paling ideal. '+
+      'Kedua-dua model diskor berbanding hujan sebenar ERA5 sebagai rujukan (atau bacaan tolok hujan anda sendiri jika dimasukkan), bukan berbanding satu sama lain.',
     matLive:n=>`${n} hari data sebenar dibandingkan`,
     matThin:'Sampel kecil — sebagai panduan sahaja (sasaran ≥14 hari)',
     matScored:n=>`${n} hari diskor (ada data sebenar)`,matPending:n=>`${n} menunggu data ERA5`,logRows:n=>`${n} hari dilog`,
@@ -1272,6 +1343,18 @@ const I18N={
     errMet:'MET Malaysia tidak memulangkan apa-apa / memerlukan token. Tiada data MET untuk lokasi ini.',
     errRange:'Pilih julat tarikh yang sah.',running:'Duel sedang berjalan…',
     storageFull:'⚠ Storan penuh — rekod baharu tidak dapat disimpan. Sandarkan data anda di Tetapan.',
+    leadLabel:'Ramalan yang diskor',leadFirst:'Yang pertama dilog',lead0:'Dibuat pada hari yang sama',leadN:n=>`Dibuat ${n} hari lebih awal`,
+    leadHint:'Data bagi tempoh awal yang tetap hanya terkumpul mulai hari ciri ini ditambah; tarikh lebih awal hanya ada ramalan pertama yang dilog.',
+    gaugeBtn:'📏 Masukkan bacaan tolok hujan saya',gaugeTitle:'Bacaan tolok hujan',gaugeMm:'Hujan pada hari itu (mm)',gaugeSave:'Simpan bacaan',gaugeDel:'Buang bacaan',
+    gaugeHint:era=>`Masukkan jumlah bagi hari kalendar itu, tengah malam ke tengah malam. Bacaan anda menggantikan ERA5 sebagai data sebenar hari itu.${era!=null?` ERA5 mencatat ${era} mm.`:''}`,
+    gaugeSaved:'Bacaan tolok hujan disimpan',gaugeRemoved:'Bacaan tolok hujan dibuang',gaugeBad:'Masukkan tarikh sehingga hari ini dan hujan 0 mm atau lebih',
+    gaugeLegend:'📏 = bacaan tolok hujan anda sendiri menjadi data sebenar hari itu (menggantikan ERA5). Ketik mana-mana petak "Sebenar" untuk memasukkannya.',
+    dataLabel:'Data',backup:'Sandarkan semua data',restore2:'Pulihkan daripada sandaran',exportAll:'Eksport semua kebun ke Excel',
+    dataHint:'Semua rekod hanya disimpan dalam telefon ini, dan ramalan lampau tidak boleh diambil semula. Buat sandaran selalu dan simpan fail itu di tempat lain.',
+    backupDone:(f,n)=>`${f} kebun, ${n} hari log disandarkan`,
+    restoreBad:'Itu bukan fail sandaran ModelDuel yang sah',
+    restoreConfirm:(when,f,n)=>`Gantikan semua data dalam telefon ini dengan sandaran bertarikh ${when} (${f} kebun, ${n} hari log)? Tindakan ini tidak boleh dibuat asal.`,
+    exportAllDone:(f,n)=>`${f} kebun, ${n} baris dieksport (.xlsx)`,
     gpsErr:'Lokasi tidak tersedia',gpsOk:'Koordinat diisi',needName:'Masukkan nama & koordinat',
     softDeleted:'Dipadam',undo:'Buat asal',restored:'Dipulihkan ✓',
     restore:'Pulihkan',bin:n=>`Tong kitar semula (${n})`,purge:'Kosongkan tong kitar semula secara kekal',
@@ -1307,6 +1390,9 @@ function paintLabels(){
   if(editingId){const l=state.locations.find(x=>x.id===editingId);if(l)$('#editingTag').textContent=t.editing(l.name);}
   set('t-settings',t.settings);
   updateLogBtn();   // sets the log button label (today-logged aware) in current lang
+  set('t-lead',t.leadLabel);populateLeadOptions();
+  set('t-gauge-title',t.gaugeTitle);set('t-gauge-date',t.date);set('t-gauge-mm',t.gaugeMm);set('t-gauge-save',t.gaugeSave);set('t-gauge-del',t.gaugeDel);set('t-gauge-btn',t.gaugeBtn);
+  set('t-data',t.dataLabel);set('t-backup',t.backup);set('t-restore',t.restore2);set('t-exportall',t.exportAll);set('t-data-hint',t.dataHint);
   set('t-proxycheck',t.proxyCheck);set('t-autolog',t.autoLogLabel);set('t-langlabel',t.langLabel);
   updateDriveIcon();
   if($('#autoLog')) populateAutoLogOptions();
@@ -2203,7 +2289,7 @@ function amountMAE(rows){
 /* ===================== cross-farm ranking ===================== */
 /* Score one farm from its log — the same rows the scoreboard uses. */
 function scoreFarm(loc){
-  const rows=farmRows(loc).filter(r=>r.obs!=null&&!r.trace);
+  const rows=farmRows(loc).filter(r=>r.obs!=null&&!r.trace&&(r.met!=null||r.ecmwf!=null));
   return {loc,met:score(rows.map(r=>({fc:r.met,obs:r.obs}))),
           ec:score(rows.map(r=>({fc:r.ecmwf,obs:r.obs}))),scored:rows.length};
 }
@@ -2280,10 +2366,14 @@ function finishDuel(loc,nt,rows,isDemo){
   // Trace days (0<mm<th) are ambiguous drizzle — excluded from BOTH models'
   // scores and from the scored count. Amount MAE keeps them (amount-based,
   // no ambiguity there).
-  const scored=rows.filter(r=>r.obs!=null && !r.trace).length;
+  // A day counts as scored when it has a truth value AND at least one of the
+  // two forecasts under the current lead view; "pending" = forecast, no truth yet.
+  const hasFc=r=>r.met!=null||r.ecmwf!=null;
+  const scored=rows.filter(r=>r.obs!=null && !r.trace && hasFc(r)).length;
+  const pending=rows.filter(r=>r.obs==null && hasFc(r)).length;
   const amt=amountMAE(rows);
   lastResult={loc:{name:loc.name},town:nt.town,townKm:(nt.km!=null?nt.km:null),
-    townChosen:!!nt.chosen,rows,scored,
+    townChosen:!!nt.chosen,rows,scored,pending,lead:leadSetting(),
     met:score(rows.map(r=>({fc:r.trace?null:r.met,obs:r.obs}))),
     ecmwf:score(rows.map(r=>({fc:r.trace?null:r.ecmwf,obs:r.obs}))),
     ecMAE:amt.mae, ecMAEn:amt.n, periods:scorePeriods(rows), isDemo};
@@ -2292,6 +2382,60 @@ function finishDuel(loc,nt,rows,isDemo){
 }
 
 function switchActiveMet(){ if(activeLoc) openMetSwitch(activeLoc); }
+
+/* ---- the farm's own rain gauge as truth ----
+   ERA5 is a coarse reanalysis and misses local tropical downpours; a gauge on
+   the farm is the better truth for that spot. A reading replaces ERA5 for its
+   day in the scores (time-of-day scores still use ERA5 — a daily gauge total
+   has no morning/afternoon/night split). */
+function openGauge(date){
+  const t=T();
+  const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted);
+  if(!loc){ status(t.selectFirst,'err'); return; }
+  const today=todayYMD();
+  $('#gaugeFarm').textContent=loc.name;
+  $('#gaugeDate').max=today;
+  $('#gaugeDate').value=(date&&date<=today)?date:daysAgoYMD(1);
+  gaugeDateChanged();
+  $('#gaugeModal').style.display='flex';
+}
+function closeGauge(){ $('#gaugeModal').style.display='none'; }
+function gaugeDateChanged(){
+  const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted); if(!loc) return;
+  const e=(state.log[loc.id]||{})[$('#gaugeDate').value]||{};
+  $('#gaugeMm').value=e.gmm!=null?e.gmm:'';
+  $('#gaugeDel').style.display=e.gmm!=null?'block':'none';
+  $('#gaugeHint').textContent=T().gaugeHint(e.actmm!=null?(+e.actmm).toFixed(1):null);
+}
+function saveGauge(){
+  const t=T();
+  const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted); if(!loc) return;
+  const d=$('#gaugeDate').value, raw=$('#gaugeMm').value.trim(), mm=parseFloat(raw);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||d>todayYMD()||raw===''||isNaN(mm)||mm<0||mm>2000){ toast(t.gaugeBad); return; }
+  const lg=logFor(loc.id); (lg[d]=lg[d]||{}).gmm=Math.round(mm*10)/10;
+  save();closeGauge();runDuel();toast(t.gaugeSaved);
+}
+function deleteGauge(){
+  const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted); if(!loc) return;
+  const d=$('#gaugeDate').value, lg=logFor(loc.id);
+  if(lg[d]){ delete lg[d].gmm; if(!Object.keys(lg[d]).length) delete lg[d]; }
+  save();closeGauge();runDuel();toast(T().gaugeRemoved);
+}
+
+/* ---- which forecast is scored (lead time) ---- */
+function leadText(L){ const t=T(); return L==='first'?t.leadFirst:(L===0?t.lead0:t.leadN(L)); }
+function populateLeadOptions(){
+  const sel=$('#leadSel'); if(!sel) return;
+  sel.innerHTML=['first',1,2,3,4,5,6,0].map(L=>`<option value="${L}">${leadText(L)}</option>`).join('');
+  sel.value=String(leadSetting());
+  const h=$('#leadHint'); if(h){ h.textContent=T().leadHint; h.style.display=leadSetting()==='first'?'none':'block'; }
+}
+function saveLead(){
+  const v=$('#leadSel').value;
+  state.settings.lead=(v==='first')?'first':+v; save();
+  populateLeadOptions();
+  if(activeLoc) runDuel(); else if(rankCardOpen) renderRanking();
+}
 
 /* Reflect on the log button whether TODAY is already logged for the active farm.
    If so, de-emphasize it (today's done — the useful action is now re-score) and
@@ -2335,8 +2479,9 @@ function buildScorecardText(){
   L.push('');
   // score table (plain text)
   L.push(t.shScores);
-  L.push(`MET  · ${t.labCSI} ${fmt(m.csi)} · ${t.labPOD} ${fmt(m.pod)} · ${t.labFAR} ${fmt(m.far)}`);
-  L.push(`${info.name.padEnd(4)} · ${t.labCSI} ${fmt(e.csi)} · ${t.labPOD} ${fmt(e.pod)} · ${t.labFAR} ${fmt(e.far)}`);
+  L.push(`MET  · ${t.labCSI} ${fmt(m.csi)} · ${t.labPOD} ${fmt(m.pod)} · ${t.labFAR} ${fmt(m.far)} · ${t.labBias} ${fmt(m.bias)}`);
+  L.push(`${info.name.padEnd(4)} · ${t.labCSI} ${fmt(e.csi)} · ${t.labPOD} ${fmt(e.pod)} · ${t.labFAR} ${fmt(e.far)} · ${t.labBias} ${fmt(e.bias)}`);
+  if(res.lead!=null&&res.lead!=='first') L.push(`⏱ ${leadText(res.lead)}`);
   // amount (challenger only)
   if(res.ecMAE!=null){ L.push(''); L.push(t.shAmount(info.name,res.ecMAE.toFixed(1),res.ecMAEn)); }
   // maturity note
@@ -2433,42 +2578,105 @@ function buildXlsx(aoa,sheetName){
   ];
   return _zipStore(files);
 }
-function exportFarmXLS(){
-  const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted);
-  if(!loc){ status(T().selectFirst,'err'); return; }
-  const lg=state.log[loc.id]||{};
-  const dates=Object.keys(lg).sort();
-  if(!dates.length){ status(T().exportEmpty,'warn'); return; }
-  const info=challengerInfo();
-  const b=v=>v==null?'':v;                    // blank for null
-  const P=(p,k)=> (p&&p[k]!=null)?p[k]:'';    // period flag or blank
-  const header=['farm','lat','lon','met_town','date',
-    'met_rain','met_morning','met_afternoon','met_night',
-    'challenger_model','chal_rain','chal_mm','chal_morning','chal_afternoon','chal_night',
-    'actual_rain','actual_mm','act_morning','act_afternoon','act_night',
-    'rain_threshold_mm','truth_source'];
-  const town=loc.metTownChosen||nearestTown(+loc.lat,+loc.lon).town;
-  const th=getThresh();
-  const aoa=[header];
-  for(const d of dates){
-    const r=lg[d];
-    aoa.push([
-      loc.name, +loc.lat, +loc.lon, town, d,
-      b(r.met), P(r.metP,'morning'),P(r.metP,'afternoon'),P(r.metP,'night'),
-      r.ecModel||'ecmwf_ifs', b(r.ecmwf), r.ecmm==null?'':r.ecmm, P(r.ecP,'morning'),P(r.ecP,'afternoon'),P(r.ecP,'night'),
-      b(r.actual), r.actmm==null?'':r.actmm, P(r.actP,'morning'),P(r.actP,'afternoon'),P(r.actP,'night'),
-      th, 'ERA5'
-    ]);
-  }
-  const bytes=buildXlsx(aoa,'ModelDuel');
-  const safe=loc.name.replace(/[^\w\u4e00-\u9fa5-]+/g,'_').slice(0,40);
-  const fname=`modelduel_${safe}_${todayYMD()}.xlsx`;
-  const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+function downloadBlob(blob,fname){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=url;a.download=fname;
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),2000);
-  status(T().exportDone(dates.length),'ok');
+}
+/* The first 22 columns are unchanged from earlier exports (rain/dry flags are
+   now always derived at the current threshold and lead view). After them: the
+   gauge reading and resulting truth, then the raw captures for every lead —
+   MET's flag and each challenger's mm, 0…6 days ahead. */
+const LEADS=[0,1,2,3,4,5,6];
+function exportHeader(){
+  const h=['farm','lat','lon','met_town','date',
+    'met_rain','met_morning','met_afternoon','met_night',
+    'challenger_model','chal_rain','chal_mm','chal_morning','chal_afternoon','chal_night',
+    'actual_rain','actual_mm','act_morning','act_afternoon','act_night',
+    'rain_threshold_mm','truth_source',
+    'region','lead_view','gauge_mm','truth_rain','truth_mm'];
+  for(const L of LEADS) h.push('met_rain_L'+L);
+  for(const c of CHALLENGERS) for(const L of LEADS) h.push(`${c.key}_mm_L${L}`);
+  return h;
+}
+function exportRows(loc){
+  const lg=state.log[loc.id]||{}, th=getThresh(), model=challengerKey(), L=leadSetting();
+  const b=v=>v==null?'':v;                    // blank for null
+  const P=(p,k)=> (p&&p[k]!=null)?p[k]:'';    // period flag or blank
+  const town=loc.metTownChosen||nearestTown(+loc.lat,+loc.lon).town;
+  return farmRows(loc).map(r=>{
+    const e=lg[r.date], era=periodFlags(e.actPmm,e.actP,th);
+    const row=[
+      loc.name, +loc.lat, +loc.lon, town, r.date,
+      b(r.met), P(r.metP,'morning'),P(r.metP,'afternoon'),P(r.metP,'night'),
+      model, b(r.ecmwf), b(r.ecmm), P(r.ecP,'morning'),P(r.ecP,'afternoon'),P(r.ecP,'night'),
+      e.actmm!=null?(e.actmm>=th?1:0):b(e.actual), b(e.actmm), P(era,'morning'),P(era,'afternoon'),P(era,'night'),
+      th, r.gauge?'gauge':(r.obs!=null?'ERA5':''),
+      loc.region||'', L==='first'?'first':L, b(e.gmm), b(r.obs), b(r.actmm)];
+    for(const k of LEADS){ const v=e.ml&&e.ml[k]; row.push(v?b(v[0]):''); }
+    for(const c of CHALLENGERS) for(const k of LEADS){ const v=e.fc&&e.fc[c.key]&&e.fc[c.key][k]; row.push(v?b(v[0]):''); }
+    return row;
+  });
+}
+const XLSX_MIME='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+function exportFarmXLS(){
+  const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted);
+  if(!loc){ status(T().selectFirst,'err'); return; }
+  const rows=exportRows(loc);
+  if(!rows.length){ status(T().exportEmpty,'warn'); return; }
+  const bytes=buildXlsx([exportHeader()].concat(rows),'ModelDuel');
+  const safe=loc.name.replace(/[^\w\u4e00-\u9fa5-]+/g,'_').slice(0,40);
+  downloadBlob(new Blob([bytes],{type:XLSX_MIME}),`modelduel_${safe}_${todayYMD()}.xlsx`);
+  status(T().exportDone(rows.length),'ok');
+}
+/* Every live farm in one sheet (same columns; filter on the farm column). */
+async function exportAllXLS(){
+  await logReady;
+  const aoa=[exportHeader()]; let farms=0;
+  for(const loc of activeLocs()){ const rows=exportRows(loc); if(rows.length){ farms++; for(const r of rows) aoa.push(r); } }
+  if(aoa.length===1){ toast(T().exportEmpty); return; }
+  downloadBlob(new Blob([buildXlsx(aoa,'ModelDuel')],{type:XLSX_MIME}),`modelduel_all_${todayYMD()}.xlsx`);
+  toast(T().exportAllDone(farms,aoa.length-1));
+}
+
+/* ===================== backup / restore =====================
+   Everything the app knows — farms, settings and the whole forecast log — in
+   one JSON file. The log cannot be rebuilt (yesterday's forecast is gone from
+   every API), so this file is the only protection against a lost or reset phone. */
+function logDayCount(log){ let n=0; for(const id in log) n+=Object.keys(log[id]||{}).length; return n; }
+async function backupAll(){
+  await logReady;
+  const data={app:'modelduel',version:1,exported:new Date().toISOString(),state};
+  downloadBlob(new Blob([JSON.stringify(data)],{type:'application/json'}),`modelduel_backup_${todayYMD()}.json`);
+  state.settings.lastBackup=todayYMD(); save();
+  toast(T().backupDone(activeLocs().length,logDayCount(state.log)));
+}
+async function restoreFromFile(input){
+  const t=T(), file=input.files&&input.files[0]; input.value='';
+  if(!file) return;
+  let d;
+  try{ d=JSON.parse(await file.text()); }catch(e){ d=null; }
+  const ns=d&&d.app==='modelduel'&&d.state;
+  if(!ns||!Array.isArray(ns.locations)||(ns.log&&typeof ns.log!=='object')){ toast(t.restoreBad); return; }
+  normalizeState(ns);
+  const when=String(d.exported||'').slice(0,10)||'?';
+  if(!confirm(t.restoreConfirm(when,ns.locations.filter(l=>!l.deleted).length,logDayCount(ns.log)))) return;
+  await logReady;
+  ns.lang=LANG;                       // keep the language this phone is using
+  state=ns;
+  try{
+    if(logStore==='idb'){
+      await new Promise((res,rej)=>{
+        const tx=idb.transaction(IDB_STORE,'readwrite'),st=tx.objectStore(IDB_STORE);
+        st.clear(); for(const id in state.log) st.put(state.log[id],id);
+        tx.oncomplete=()=>res(); tx.onerror=tx.onabort=()=>rej(tx.error);
+      });
+      dirtyFarms.clear();
+    }
+    save();
+  }catch(e){ storageTrouble(e); return; }
+  location.reload();
 }
 
 /* 6-cell time-of-day grid: MET vs ECMWF CSI in each of morning/afternoon/night.
@@ -2519,6 +2727,8 @@ function renderResult(){
   $('#met-csi-lab').textContent=$('#ecmwf-csi-lab').textContent=t.labCSI;
   $('#met-pod-lab').textContent=$('#ecmwf-pod-lab').textContent=t.labPOD;
   $('#met-far-lab').textContent=$('#ecmwf-far-lab').textContent=t.labFAR;
+  $('#met-bias-lab').textContent=$('#ecmwf-bias-lab').textContent=t.labBias;
+  $('#met-bias').textContent=fmt(m.bias);$('#ecmwf-bias').textContent=fmt(e.bias);
   $('#met-csi').textContent=fmt(m.csi);$('#ecmwf-csi').textContent=fmt(e.csi);
   $('#met-pod').textContent=fmt(m.pod);$('#met-far').textContent=fmt(m.far);
   $('#ecmwf-pod').textContent=fmt(e.pod);$('#ecmwf-far').textContent=fmt(e.far);
@@ -2539,7 +2749,7 @@ function renderResult(){
   // Time-of-day grid: per-period CSI for MET vs ECMWF (MET's unique breakdown)
   renderPeriodGrid(res.periods);
   const mat=$('#maturity');
-  const scored=res.scored||0, pending=res.rows.length-scored;
+  const scored=res.scored||0, pending=res.pending!=null?res.pending:res.rows.length-scored;
   const pendTxt=pending>0?' · '+t.matPending(pending):'';
   if(scored===0) mat.innerHTML='⏳ '+t.matEmpty+pendTxt;
   else if(scored<14)
@@ -2567,10 +2777,11 @@ function renderResult(){
     const star = isToday ? '<span class="today-star">★</span>' : '';
     h+=`<tr class="${isToday?'today-row':''}"><td class="date">${r.date.slice(5)}${star}${metStrip(r.metP)}</td>`+
     `<td>${pill(r.met)} ${mark(r.met,r.obs,r.trace)}</td><td>${pill(r.ecmwf)} ${mark(r.ecmwf,r.obs,r.trace)}</td>`+
-    `<td>${pill(r.obs)}</td></tr>`;});
+    `<td class="act-cell" onclick="openGauge('${r.date}')">${pill(r.obs)}${r.gauge?' <span class="gauge-mark">📏</span>':''}</td></tr>`;});
   h+='</tbody></table>';
   h+=`<div class="met-periods-legend">${t.metPeriodLegend}</div>`;
   if(res.rows.some(r=>r.trace)) h+=`<div class="met-periods-legend">${t.traceLegend}</div>`;
+  h+=`<div class="met-periods-legend">${t.gaugeLegend}</div>`;
   $('#log-body').innerHTML=h;
   setLogCard(logCardOpen);   // keep body visibility in sync with collapse state
 }
