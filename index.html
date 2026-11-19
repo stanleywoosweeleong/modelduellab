@@ -317,6 +317,38 @@
   .lead-row label{font-size:.76rem;color:var(--ink-mid);font-weight:500;flex-shrink:0}
   .lead-row select{flex:1;min-width:0;padding:8px 10px;font-size:.82rem}
   .lead-hint{font-size:.7rem;color:var(--ink-dim);line-height:1.5;margin:-4px 0 10px}
+  .trust-table{width:100%;border-collapse:collapse}
+  .trust-table th{font-size:.7rem;color:var(--ink-dim);font-weight:600;text-align:left;padding:4px 6px 6px;border-bottom:1px solid var(--line)}
+  .trust-table td{padding:9px 6px;font-size:.8rem;border-bottom:1px solid var(--line);vertical-align:middle}
+  .trust-table tr:last-child td{border-bottom:none}
+  .trust-table .tr-day{font-weight:700;color:var(--ink)}
+  .trust-table .tr-date{display:block;font-size:.68rem;color:var(--ink-dim);font-weight:500;font-family:var(--mono)}
+  .trust-table .tr-mm{font-size:.72rem;color:var(--ink-mid);font-family:var(--mono);margin-left:4px}
+  .trust-table tr.disagree td{background:var(--warn-soft)}
+  .trust-table .tr-flag{font-size:.7rem;color:var(--warn);font-weight:700;white-space:nowrap}
+  .trust-advice{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);
+    font-size:.8rem;color:var(--ink-mid);line-height:1.55}
+  .trust-advice b{color:var(--ink)}
+  .trust-note{font-size:.7rem;color:var(--ink-dim);margin-top:8px;line-height:1.5}
+  .trend-sub{font-size:.74rem;color:var(--ink-mid);margin:10px 0 6px;font-weight:600}
+  .trend-legend{display:flex;gap:16px;font-size:.74rem;color:var(--ink-mid);margin-bottom:4px}
+  .trend-legend i{display:inline-block;width:16px;height:0;border-top:2px solid;vertical-align:middle;margin-right:6px}
+  .trend-wrap{position:relative;touch-action:pan-y}
+  .trend-wrap svg{display:block;width:100%;height:auto;overflow:visible}
+  .trend-tip{position:absolute;top:0;pointer-events:none;background:var(--ink);color:#fff;border-radius:8px;padding:6px 9px;
+    font-size:.7rem;line-height:1.5;white-space:nowrap;box-shadow:var(--shadow-lg);display:none;z-index:2}
+  .trend-tip b{font-family:var(--mono);font-size:.76rem}
+  .trend-tip i{display:inline-block;width:10px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
+  .trend-empty{font-size:.78rem;color:var(--ink-dim);padding:10px 0 2px;line-height:1.5}
+  .season-table{width:100%;border-collapse:collapse;margin-top:2px}
+  .season-table th,.season-table td{padding:7px 6px;font-size:.74rem;text-align:right;border-bottom:1px solid var(--line)}
+  .season-table th{color:var(--ink-dim);font-size:.68rem;font-weight:600}
+  .season-table th:first-child,.season-table td:first-child{text-align:left}
+  .season-table td{font-family:var(--mono);color:var(--ink)}
+  .season-table td:first-child{font-family:inherit;color:var(--ink-mid)}
+  .season-table td.best{font-weight:700}
+  .season-table tr:last-child td{border-bottom:none}
+  .trend-values summary{font-size:.74rem;color:var(--accent-dark);cursor:pointer;font-weight:600;padding:8px 0 2px}
   .act-cell{cursor:pointer}
   .gauge-mark{font-size:.72rem}
   .data-hint{font-size:.72rem;color:var(--ink-dim);line-height:1.6;margin-top:8px}
@@ -555,6 +587,12 @@
     <div class="maturity" id="maturity"></div>
   </div>
 
+  <!-- NEXT 3 DAYS: what each model expects + whose record is better here -->
+  <div class="card" id="trust-card" style="display:none">
+    <h2 style="margin-bottom:8px">🧭 <span id="t-trust">未来三天</span></h2>
+    <div id="trustBody"></div>
+  </div>
+
   <!-- SCOREBOARD -->
   <div class="card" id="board-card" style="display:none">
     <h2 style="margin-bottom:4px">🏆 <span id="t-board">记分板</span></h2>
@@ -599,6 +637,15 @@
       <span id="t-gauge-btn">📏 输入我的雨量筒读数</span></button>
     <button class="btn ghost export-btn" id="exportBtn" onclick="exportFarmXLS()">
       <span id="t-export">📥 导出 Excel（本农场原始数据）</span></button>
+  </div>
+
+  <!-- TREND: rolling CSI + season split -->
+  <div class="card" id="trend-card" style="display:none">
+    <h2 class="master-hd" onclick="toggleTrendCard()">
+      <span>📉 <span id="t-trend">走势</span></span>
+      <span class="master-right"><span class="master-hint" id="trendHint"></span> <span class="chev master-chev" id="trendChev">▶</span></span>
+    </h2>
+    <div id="trendBody" style="display:none"></div>
   </div>
 
   <!-- CROSS-FARM RANKING -->
@@ -1119,6 +1166,17 @@ const I18N={
     restoreBad:'这不是有效的 ModelDuel 备份文件',
     restoreConfirm:(when,f,n)=>`用 ${when} 的备份（${f} 个地点、${n} 天记录）取代这台手机上的全部数据？此操作无法撤销。`,
     exportAllDone:(f,n)=>`已导出 ${f} 个地点、${n} 行 (.xlsx)`,
+    trustTitle:'未来三天',trToday:'今天',trTomorrow:'明天',trDayAfter:'后天',trDiffer:'不一致',
+    trustEmpty:'记录今日预报后，这里会显示两个模型对未来三天的预报。',
+    trustAsOf:d=>`以上是 ${d} 记录的预报 —— 今天记录一次即可更新。`,
+    trustLean:(w,a,b,n)=>`在这个地点，<b>${w}</b> 的记录较好：综合 ${a} 对 ${b}（${n} 天）。`,
+    trustEven:(a,b,n)=>`在这个地点，两者至今差不多可靠：综合 ${a} 对 ${b}（${n} 天）。`,
+    trustNoRecord:'这个地点的已评分天数还不够，暂时无法判断该信谁。',
+    trustDisagree:w=>`两者对上面某一天的看法不一致 —— 可偏向 <b>${w}</b>。`,
+    trustDisagreeNo:'两者对上面某一天的看法不一致。',
+    trendTitle:'走势',trendSub:n=>`最近 ${n} 天的综合分 (CSI)，越高越好`,
+    trendNeed:(n,m)=>`至少要有 ${m} 天已评分才能画出走势，目前 ${n} 天。`,trendValues:'显示数值',
+    seasonTitle:'按季节',seasonDays:'天数',seasonNE:'东北季候风（11–3月）',seasonSW:'西南季候风（5–9月）',seasonInter:'季候风转换期（4、10月）',
     gpsErr:'无法取得定位',gpsOk:'已带入坐标',needName:'请填名称与坐标',
     softDeleted:'已删除',undo:'撤销',restored:'已恢复 ✓',
     restore:'恢复',bin:n=>`回收站（${n}）`,purge:'永久清空回收站',
@@ -1237,6 +1295,17 @@ const I18N={
     restoreBad:'That is not a valid ModelDuel backup file',
     restoreConfirm:(when,f,n)=>`Replace everything on this phone with the backup from ${when} (${f} farms, ${n} logged days)? This cannot be undone.`,
     exportAllDone:(f,n)=>`Exported ${f} farms, ${n} rows (.xlsx)`,
+    trustTitle:'Next 3 days',trToday:'Today',trTomorrow:'Tomorrow',trDayAfter:'Day after',trDiffer:'differ',
+    trustEmpty:'Log today\'s forecast to see what each model expects for the next three days.',
+    trustAsOf:d=>`These are the forecasts logged on ${d} — log today to refresh them.`,
+    trustLean:(w,a,b,n)=>`At this farm <b>${w}</b> has the better record: CSI ${a} vs ${b} over ${n} days.`,
+    trustEven:(a,b,n)=>`At this farm the two have been about equally reliable so far: CSI ${a} vs ${b} over ${n} days.`,
+    trustNoRecord:'Not enough scored days at this farm yet to say which one to trust.',
+    trustDisagree:w=>`They disagree on a day above — lean towards <b>${w}</b>.`,
+    trustDisagreeNo:'They disagree on a day above.',
+    trendTitle:'Trend',trendSub:n=>`CSI over the trailing ${n} days (higher is better)`,
+    trendNeed:(n,m)=>`A trend needs at least ${m} scored days — ${n} so far.`,trendValues:'Show values',
+    seasonTitle:'By season',seasonDays:'Days',seasonNE:'Northeast monsoon (Nov–Mar)',seasonSW:'Southwest monsoon (May–Sep)',seasonInter:'Inter-monsoon (Apr, Oct)',
     gpsErr:'Location unavailable',gpsOk:'Coordinates filled',needName:'Enter name & coordinates',
     softDeleted:'Deleted',undo:'Undo',restored:'Restored ✓',
     restore:'Restore',bin:n=>`Recycle bin (${n})`,purge:'Empty recycle bin permanently',
@@ -1355,6 +1424,17 @@ const I18N={
     restoreBad:'Itu bukan fail sandaran ModelDuel yang sah',
     restoreConfirm:(when,f,n)=>`Gantikan semua data dalam telefon ini dengan sandaran bertarikh ${when} (${f} kebun, ${n} hari log)? Tindakan ini tidak boleh dibuat asal.`,
     exportAllDone:(f,n)=>`${f} kebun, ${n} baris dieksport (.xlsx)`,
+    trustTitle:'3 hari akan datang',trToday:'Hari ini',trTomorrow:'Esok',trDayAfter:'Lusa',trDiffer:'berbeza',
+    trustEmpty:'Log ramalan hari ini untuk melihat jangkaan setiap model bagi tiga hari akan datang.',
+    trustAsOf:d=>`Ini ramalan yang dilog pada ${d} — log hari ini untuk mengemas kininya.`,
+    trustLean:(w,a,b,n)=>`Di kebun ini, <b>${w}</b> mempunyai rekod yang lebih baik: CSI ${a} lawan ${b} dalam ${n} hari.`,
+    trustEven:(a,b,n)=>`Di kebun ini, kedua-duanya setakat ini lebih kurang sama boleh dipercayai: CSI ${a} lawan ${b} dalam ${n} hari.`,
+    trustNoRecord:'Hari yang diskor di kebun ini belum mencukupi untuk menentukan yang mana lebih boleh dipercayai.',
+    trustDisagree:w=>`Kedua-duanya berbeza pendapat tentang satu hari di atas — cenderunglah kepada <b>${w}</b>.`,
+    trustDisagreeNo:'Kedua-duanya berbeza pendapat tentang satu hari di atas.',
+    trendTitle:'Trend',trendSub:n=>`CSI bagi ${n} hari terakhir (lebih tinggi lebih baik)`,
+    trendNeed:(n,m)=>`Trend memerlukan sekurang-kurangnya ${m} hari yang diskor — setakat ini ${n}.`,trendValues:'Tunjuk nilai',
+    seasonTitle:'Mengikut musim',seasonDays:'Hari',seasonNE:'Monsun Timur Laut (Nov–Mac)',seasonSW:'Monsun Barat Daya (Mei–Sep)',seasonInter:'Peralihan monsun (Apr, Okt)',
     gpsErr:'Lokasi tidak tersedia',gpsOk:'Koordinat diisi',needName:'Masukkan nama & koordinat',
     softDeleted:'Dipadam',undo:'Buat asal',restored:'Dipulihkan ✓',
     restore:'Pulihkan',bin:n=>`Tong kitar semula (${n})`,purge:'Kosongkan tong kitar semula secara kekal',
@@ -1391,6 +1471,7 @@ function paintLabels(){
   set('t-settings',t.settings);
   updateLogBtn();   // sets the log button label (today-logged aware) in current lang
   set('t-lead',t.leadLabel);populateLeadOptions();
+  set('t-trust',t.trustTitle);set('t-trend',t.trendTitle);
   set('t-gauge-title',t.gaugeTitle);set('t-gauge-date',t.date);set('t-gauge-mm',t.gaugeMm);set('t-gauge-save',t.gaugeSave);set('t-gauge-del',t.gaugeDel);set('t-gauge-btn',t.gaugeBtn);
   set('t-data',t.dataLabel);set('t-backup',t.backup);set('t-restore',t.restore2);set('t-exportall',t.exportAll);set('t-data-hint',t.dataHint);
   set('t-proxycheck',t.proxyCheck);set('t-autolog',t.autoLogLabel);set('t-langlabel',t.langLabel);
@@ -1511,7 +1592,7 @@ function deletedLocs(){return state.locations.filter(l=>l.deleted);}
 function softDelLoc(id){
   const l=state.locations.find(x=>x.id===id);if(!l)return;
   l.deleted=true;
-  if(activeLoc===id){ activeLoc=null; state.activeLoc=null; $('#board-card').style.display='none'; $('#log-card').style.display='none'; }
+  if(activeLoc===id){ activeLoc=null; state.activeLoc=null; $('#board-card').style.display='none'; $('#log-card').style.display='none'; $('#trust-card').style.display='none'; $('#trend-card').style.display='none'; }
   save();
   renderLocList();updateLocHint();
   toast(`${T().softDeleted} · ${l.name}`, T().undo, ()=>restoreLoc(id));
@@ -2784,6 +2865,162 @@ function renderResult(){
   h+=`<div class="met-periods-legend">${t.gaugeLegend}</div>`;
   $('#log-body').innerHTML=h;
   setLogCard(logCardOpen);   // keep body visibility in sync with collapse state
+  renderTrust();
+  $('#trend-card').style.display='block';
+  setTrendCard(trendCardOpen);
+}
+
+/* ===================== next 3 days: who to trust ===================== */
+/* The most recent forecast held for a log entry (smallest lead = captured last). */
+function latestMet(e){
+  const k=minKey(e&&e.ml); if(k!=null){ const v=e.ml[k]; return {rain:v[0],P:P3(v),lead:k}; }
+  return (e&&e.met!=null)?{rain:e.met,P:e.metP||null,lead:null}:null;
+}
+function latestChal(e,model){
+  const m=e&&e.fc&&e.fc[model], k=minKey(m); if(k!=null) return {mm:m[k][0],lead:k};
+  return (e&&e.ecmm!=null&&(e.ecModel||'ecmwf_ifs')===model)?{mm:e.ecmm,lead:null}:null;
+}
+function renderTrust(){
+  const t=T(),card=$('#trust-card'),body=$('#trustBody');
+  const loc=state.locations.find(l=>l.id===activeLoc&&!l.deleted);
+  if(!card||!loc||!lastResult){ if(card) card.style.display='none'; return; }
+  card.style.display='block';
+  const lg=state.log[loc.id]||{}, th=getThresh(), info=challengerInfo(), today=todayYMD();
+  const pill=v=>v==null?'<span class="pill dry">–</span>':
+    v===1?`<span class="pill rain">${t.rain}</span>`:`<span class="pill dry">${t.dry}</span>`;
+  const dots=mp=>{
+    if(!mp) return '';
+    const dot=(v,ic)=>`<span class="ps-dot ${v==null?'ps-na':(v===1?'ps-rain':'ps-dry')}">${ic}</span>`;
+    return `<div class="met-periods">${dot(mp.morning,'🌅')}${dot(mp.afternoon,'☀️')}${dot(mp.night,'🌙')}</div>`;
+  };
+  let any=false, disagree=false, newest=null, h='';
+  [0,1,2].forEach(i=>{
+    const d=addDaysYMD(today,i), e=lg[d], m=latestMet(e), c=latestChal(e,info.key);
+    const cr=c?(c.mm>=th?1:0):null, mr=m?m.rain:null;
+    if(m||c) any=true;
+    for(const x of [m,c]) if(x&&x.lead!=null){ const cap=addDaysYMD(d,-x.lead); if(!newest||cap>newest) newest=cap; }
+    const dis=(mr!=null&&cr!=null&&mr!==cr); if(dis) disagree=true;
+    const name=i===0?t.trToday:(i===1?t.trTomorrow:t.trDayAfter);
+    h+=`<tr class="${dis?'disagree':''}"><td><span class="tr-day">${name}</span><span class="tr-date">${d.slice(5)}</span></td>`+
+       `<td>${pill(mr)}${m?dots(m.P):''}</td>`+
+       `<td>${pill(cr)}${c?`<span class="tr-mm">${(+c.mm).toFixed(1)} mm</span>`:''}</td>`+
+       `<td class="tr-flag">${dis?'⚠ '+t.trDiffer:''}</td></tr>`;
+  });
+  if(!any){ body.innerHTML=`<div class="trend-empty">${t.trustEmpty}</div>`; return; }
+  // whose record is better at THIS farm (same numbers as the scoreboard)
+  const m=lastResult.met,e=lastResult.ecmwf,n=lastResult.scored||0;
+  let advice, lean=null;
+  if(n>=5&&m.csi!=null&&e.csi!=null){
+    if(Math.abs(m.csi-e.csi)<0.05) advice=t.trustEven(fmt(m.csi),fmt(e.csi),n);
+    else{ lean=m.csi>e.csi?'MET':info.name;
+      advice=m.csi>e.csi?t.trustLean('MET',fmt(m.csi),fmt(e.csi),n):t.trustLean(info.name,fmt(e.csi),fmt(m.csi),n); }
+    if(n<14) advice+=' '+t.matThin+'.';
+  }else advice=t.trustNoRecord;
+  if(disagree) advice=(lean?t.trustDisagree(lean):t.trustDisagreeNo)+' '+advice;
+  h=`<table class="trust-table"><thead><tr><th></th><th>MET</th><th>${info.name}</th><th></th></tr></thead><tbody>${h}</tbody></table>`+
+    `<div class="trust-advice">${advice}</div>`;
+  if(newest&&newest<today) h+=`<div class="trust-note">${t.trustAsOf(newest.slice(5))}</div>`;
+  body.innerHTML=h;
+}
+
+/* ===================== trend: rolling CSI + season split ===================== */
+const TREND_WINDOW=30, TREND_MIN=7;   // days in the window; scored days needed for a point
+let trendCardOpen=false;
+function toggleTrendCard(){ setTrendCard(!trendCardOpen); }
+function setTrendCard(open){
+  trendCardOpen=open;
+  $('#trendBody').style.display=open?'block':'none';
+  $('#trendChev').textContent=open?'▼':'▶';
+  if(open) renderTrend();
+}
+/* CSI over the trailing 30 days, one point per scored date. A window needs
+   TREND_MIN scored days, and CSI stays null (a gap) when it holds no rain event. */
+function trendPoints(rows){
+  const sc=rows.filter(r=>r.obs!=null&&!r.trace&&(r.met!=null||r.ecmwf!=null));
+  const pts=[];
+  sc.forEach((r,i)=>{
+    const from=addDaysYMD(r.date,-(TREND_WINDOW-1));
+    const win=sc.slice(0,i+1).filter(x=>x.date>=from);
+    if(win.length<TREND_MIN) return;
+    pts.push({date:r.date,n:win.length,
+      met:score(win.map(x=>({fc:x.met,obs:x.obs}))).csi,
+      ec:score(win.map(x=>({fc:x.ecmwf,obs:x.obs}))).csi});
+  });
+  return {pts,scored:sc.length};
+}
+function seasonOf(date){
+  const mo=+date.slice(5,7);
+  return (mo>=11||mo<=3)?'ne':((mo>=5&&mo<=9)?'sw':'inter');
+}
+function renderTrend(){
+  const t=T(),el=$('#trendBody'),res=lastResult; if(!el||!res) return;
+  const info=challengerInfo(), {pts,scored}=trendPoints(res.rows);
+  const css=getComputedStyle(document.documentElement);
+  const cMet=css.getPropertyValue('--met').trim(), cEc=css.getPropertyValue('--ecmwf').trim();
+  let h=`<div class="trend-sub">${t.trendSub(TREND_WINDOW)}</div>`;
+  const drawable=pts.filter(p=>p.met!=null||p.ec!=null);
+  if(drawable.length<2){
+    h+=`<div class="trend-empty">${t.trendNeed(scored,TREND_MIN+1)}</div>`;
+  }else{
+    const W=340,H=170,ml=26,mr=14,mt=8,mb=22, pw=W-ml-mr, ph=H-mt-mb;
+    const t0=Date.parse(pts[0].date), t1=Date.parse(pts[pts.length-1].date);
+    const X=d=>ml+(t1===t0?pw/2:(Date.parse(d)-t0)/(t1-t0)*pw), Y=v=>mt+(1-v)*ph;
+    const path=k=>{ let d='',pen=false;
+      for(const p of pts){ if(p[k]==null){ pen=false; continue; } d+=(pen?'L':'M')+X(p.date).toFixed(1)+' '+Y(p[k]).toFixed(1); pen=true; }
+      return d; };
+    const lastOf=k=>{ for(let i=pts.length-1;i>=0;i--) if(pts[i][k]!=null) return pts[i]; return null; };
+    const end=(k,c)=>{ const p=lastOf(k); return p?`<circle cx="${X(p.date).toFixed(1)}" cy="${Y(p[k]).toFixed(1)}" r="4" fill="${c}" stroke="var(--panel)" stroke-width="2"/>`:''; };
+    let g='';
+    for(const v of [0,0.5,1]) g+=`<line x1="${ml}" x2="${W-mr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="1"/>`+
+      `<text x="${ml-6}" y="${Y(v)+3.5}" text-anchor="end" font-size="10" fill="var(--ink-dim)">${v===0.5?'0.5':v}</text>`;
+    g+=`<text x="${ml}" y="${H-5}" font-size="10" fill="var(--ink-dim)">${pts[0].date.slice(5)}</text>`+
+       `<text x="${W-mr}" y="${H-5}" text-anchor="end" font-size="10" fill="var(--ink-dim)">${pts[pts.length-1].date.slice(5)}</text>`;
+    const lm=lastOf('met'), le=lastOf('ec');
+    h+=`<div class="trend-legend"><span><i style="border-color:${cMet}"></i>MET${lm?' · '+fmt(lm.met):''}</span>`+
+       `<span><i style="border-color:${cEc}"></i>${info.name}${le?' · '+fmt(le.ec):''}</span></div>`+
+      `<div class="trend-wrap" id="trendWrap"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${t.trendSub(TREND_WINDOW)}">${g}`+
+      `<line id="trendCross" x1="0" x2="0" y1="${mt}" y2="${mt+ph}" stroke="var(--ink-dim)" stroke-width="1" style="display:none"/>`+
+      `<path d="${path('met')}" fill="none" stroke="${cMet}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`+
+      `<path d="${path('ec')}" fill="none" stroke="${cEc}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`+
+      `${end('met',cMet)}${end('ec',cEc)}</svg><div class="trend-tip" id="trendTip"></div></div>`;
+    h+=`<details class="trend-values"><summary>${t.trendValues}</summary><table class="season-table"><thead><tr><th>${t.date}</th><th>${t.seasonDays}</th><th>MET</th><th>${info.name}</th></tr></thead><tbody>`+
+      pts.slice().reverse().map(p=>`<tr><td>${p.date.slice(5)}</td><td>${p.n}</td><td>${fmt(p.met)}</td><td>${fmt(p.ec)}</td></tr>`).join('')+`</tbody></table></details>`;
+  }
+  // season split — a model can be good in one monsoon and poor in the other
+  const sc=res.rows.filter(r=>r.obs!=null&&!r.trace&&(r.met!=null||r.ecmwf!=null));
+  h+=`<div class="trend-sub" style="margin-top:14px">${t.seasonTitle}</div>`+
+     `<table class="season-table"><thead><tr><th></th><th>${t.seasonDays}</th><th>MET</th><th>${info.name}</th></tr></thead><tbody>`;
+  for(const [k,lab] of [['ne',t.seasonNE],['sw',t.seasonSW],['inter',t.seasonInter]]){
+    const w=sc.filter(r=>seasonOf(r.date)===k);
+    const a=score(w.map(x=>({fc:x.met,obs:x.obs}))).csi, b=score(w.map(x=>({fc:x.ecmwf,obs:x.obs}))).csi;
+    const best=(x,y)=>x!=null&&y!=null&&x>y+0.005?' class="best"':'';
+    h+=`<tr><td>${lab}</td><td>${w.length||'–'}</td><td${best(a,b)}>${fmt(a)}</td><td${best(b,a)}>${fmt(b)}</td></tr>`;
+  }
+  h+=`</tbody></table>`;
+  el.innerHTML=h;
+  $('#trendHint').textContent='';
+  // hover / touch readout: a crosshair snaps to the nearest date and one tooltip lists both series
+  const wrap=$('#trendWrap'); if(!wrap) return;
+  const svg=wrap.querySelector('svg'),tip=$('#trendTip'),cross=$('#trendCross');
+  const W=340,ml=26,mr=14, t0=Date.parse(pts[0].date), t1=Date.parse(pts[pts.length-1].date);
+  const xOf=d=>ml+(t1===t0?(W-ml-mr)/2:(Date.parse(d)-t0)/(t1-t0)*(W-ml-mr));
+  const show=ev=>{
+    const r=svg.getBoundingClientRect(), x=(ev.clientX-r.left)/r.width*W;
+    let best=pts[0]; for(const p of pts) if(Math.abs(xOf(p.date)-x)<Math.abs(xOf(best.date)-x)) best=p;
+    const cx=xOf(best.date);
+    cross.setAttribute('x1',cx);cross.setAttribute('x2',cx);cross.style.display='';
+    tip.innerHTML=`<div></div><div><i style="border-color:${cMet}"></i><b></b> MET</div><div><i style="border-color:${cEc}"></i><b></b> <span></span></div>`;
+    tip.children[0].textContent=`${best.date} · ${t.seasonDays} ${best.n}`;
+    tip.children[1].querySelector('b').textContent=fmt(best.met);
+    tip.children[2].querySelector('b').textContent=fmt(best.ec);
+    tip.children[2].querySelector('span').textContent=info.name;
+    tip.style.display='block';
+    const px=cx/W*r.width, tw=tip.offsetWidth;
+    tip.style.left=Math.max(0,Math.min(r.width-tw,px<r.width/2?px+10:px-tw-10))+'px';
+  };
+  const hide=()=>{ tip.style.display='none'; cross.style.display='none'; };
+  wrap.addEventListener('pointermove',show);wrap.addEventListener('pointerdown',show);
+  wrap.addEventListener('pointerleave',hide);
 }
 
 /* ===================== boot / wire ===================== */
