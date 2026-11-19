@@ -1096,7 +1096,7 @@ const I18N={
     traceLegend:'≈＝实测微雨（0–门槛之间，阴天毛毛雨）：当天双方都不计分，公平排除',
     matEmpty:'尚无可评分数据 · 每天记录，5 天后 ERA5 实测回填',
     introTitle:'这是一个长期实验',
-    introBody:'每天打开 App 记录一次预报。实测雨量（ERA5）约 <b>5 天后</b>才回填，所以最快第 5-6 天才会出现第一个分数。<br>约 <b>2 周</b>后（≥14 天）分数开始有参考价值，<b>3 周</b>后（约 20 天）才够可信。请每天坚持记录 🌱',
+    introBody:'内置地点每天早上由服务器自动记录预报，打开 App 时会自动补入；你自己新增的地点仍需每天打开 App 记录一次。实测雨量（ERA5）约 <b>5 天后</b>才回填，所以最快第 5-6 天才会出现第一个分数。<br>约 <b>2 周</b>后（≥14 天）分数开始有参考价值，<b>3 周</b>后（约 20 天）才够可信。请每天坚持记录 🌱',
     logToday:'记录今日预报',logging:'记录中…',
     loggedTodayBtn:'今日已记录 ✓（可重新评分）',reLog:'重新记录今日',
     loggedOk:t=>`已记录 · MET: ${t}`,loggedNoMet:'已记录 ECMWF（MET 无数据/未设代理）',
@@ -1222,7 +1222,7 @@ const I18N={
     traceLegend:'≈ = trace rain (between 0 and the threshold — dark-sky drizzle): that day is excluded from BOTH models\' scores, symmetrically',
     matEmpty:'No scorable data yet · log daily; ERA5 actuals backfill after 5 days',
     introTitle:'This is a long-term experiment',
-    introBody:'Open the app once a day and log the forecast. Actual rain (ERA5) backfills about <b>5 days later</b>, so your first score appears on day 5-6 at the earliest.<br>Scores become <b>indicative after ~2 weeks</b> (≥14 days) and <b>trustworthy after ~3 weeks</b> (~20 days). Keep logging daily 🌱',
+    introBody:'The built-in farms are logged automatically by the server every morning and added when you open the app; farms you add yourself still need logging here once a day. Actual rain (ERA5) backfills about <b>5 days later</b>, so your first score appears on day 5-6 at the earliest.<br>Scores become <b>indicative after ~2 weeks</b> (≥14 days) and <b>trustworthy after ~3 weeks</b> (~20 days). Keep logging daily 🌱',
     logToday:'Log today\'s forecast',logging:'Logging…',
     loggedTodayBtn:'Logged today ✓ (re-score below)',reLog:'Re-log today',
     loggedOk:t=>`Logged · MET: ${t}`,loggedNoMet:'Logged ECMWF (no MET data / proxy unset)',
@@ -1349,7 +1349,7 @@ const I18N={
     traceLegend:'≈ = hujan surih (antara 0 dan ambang — renyai-renyai langit mendung): hari itu dikecualikan daripada skor KEDUA-DUA model, secara simetri',
     matEmpty:'Belum ada data yang boleh diskor · log setiap hari; data sebenar ERA5 diisi selepas 5 hari',
     introTitle:'Ini ialah eksperimen jangka panjang',
-    introBody:'Buka aplikasi sekali sehari dan log ramalan. Hujan sebenar (ERA5) diisi kira-kira <b>5 hari kemudian</b>, jadi skor pertama anda muncul paling awal pada hari ke-5 hingga ke-6.<br>Skor menjadi <b>panduan selepas ~2 minggu</b> (≥14 hari) dan <b>boleh dipercayai selepas ~3 minggu</b> (~20 hari). Teruskan log setiap hari 🌱',
+    introBody:'Kebun terbina dalam dilog secara automatik oleh pelayan setiap pagi dan ditambah apabila anda membuka aplikasi; kebun yang anda tambah sendiri masih perlu dilog di sini sekali sehari. Hujan sebenar (ERA5) diisi kira-kira <b>5 hari kemudian</b>, jadi skor pertama anda muncul paling awal pada hari ke-5 hingga ke-6.<br>Skor menjadi <b>panduan selepas ~2 minggu</b> (≥14 hari) dan <b>boleh dipercayai selepas ~3 minggu</b> (~20 hari). Teruskan log setiap hari 🌱',
     logToday:'Log ramalan hari ini',logging:'Sedang log…',
     loggedTodayBtn:'Hari ini sudah dilog ✓ (kira semula skor di bawah)',reLog:'Log semula hari ini',
     loggedOk:t=>`Dilog · MET: ${t}`,loggedNoMet:'ECMWF dilog (tiada data MET / proksi belum ditetapkan)',
@@ -2069,10 +2069,18 @@ function mergeCapture(cap){
       }
     }
     if(changed){ state.log[loc.id]=lg; touchLog(loc.id); changedFarms++; }
+    // Today's server capture holding both the models and MET for this farm is
+    // exactly what logging it on the phone would fetch (first capture of a day
+    // wins), so the farm counts as logged today: drive mode skips it and the
+    // log button shows it as done. A farm the capture has no MET for stays
+    // unlogged, so logging it here can still fill that in.
+    if(cap.date===todayYMD()&&rows&&Object.keys(rows).length&&Object.keys(f.fc||{}).length&&loc.lastFetch!==cap.date){
+      loc.lastFetch=cap.date; _syncMarked++;
+    }
   }
   return changedFarms;
 }
-let _syncing=false,_lastSyncTry=0;
+let _syncing=false,_lastSyncTry=0,_syncMarked=0;   // _syncMarked: farms a sync marked as logged today
 async function syncServerCaptures(){
   if(location.protocol==='file:'||navigator.onLine===false||_syncing) return;
   if(Date.now()-_lastSyncTry<30*60*1000) return;       // at most every half hour
@@ -2104,6 +2112,7 @@ async function syncServerCaptures(){
   }catch(e){ console.warn('server capture sync stopped:',e&&e.message); }
   finally{
     _syncing=false;
+    if(_syncMarked){ _syncMarked=0; save(); renderLocList(); updateDriveIcon(); updateLogBtn(); }
     if(days){   // show whatever did get merged, even if a later file failed
       if(activeLoc) runDuel(); else if(rankCardOpen) renderRanking();
       toast(T().syncDone(days,farms));
