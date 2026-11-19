@@ -9,6 +9,7 @@
 const CACHE_PREFIX = 'modelduel-';     // unique to THIS app — see activate
 const CACHE = 'modelduel-shell';       // fixed name; never changes between deploys
 const INDEX = './index.html';
+const SCOPE_PATH = new URL('./', self.location).pathname;   // e.g. /modelduellab/
 const SHELL = [
   INDEX,
   './manifest.json',
@@ -65,7 +66,7 @@ self.addEventListener('activate', (e) => {
 });
 
 /* fetch:
-   - navigations  → the cached app, instantly; network only if nothing is cached
+   - the app page → the cached app, instantly; network only if nothing is cached
    - same-origin  → cache first, then network, and cache what comes back
    - cross-origin → left alone (Open-Meteo, MET worker are the page's business)
    - ./data/      → left alone (daily capture files, always from the network)
@@ -80,7 +81,11 @@ self.addEventListener('fetch', (e) => {
   // them from this cache (the page merges them into its own log).
   if (url.pathname.indexOf('/data/') !== -1) return;
 
-  if (req.mode === 'navigate') {
+  // The app page is requested three ways: as a navigation, as "./" (the
+  // manifest's start_url — browsers fetch it without navigating when checking
+  // the app is installable) and as index.html. All three get the cached page.
+  const isAppPage = req.mode === 'navigate' || url.pathname === SCOPE_PATH || url.pathname === SCOPE_PATH + 'index.html';
+  if (isAppPage) {
     e.respondWith(
       caches.match(INDEX).then((hit) => {
         if (hit) return hit;
@@ -91,7 +96,7 @@ self.addEventListener('fetch', (e) => {
           }
           return res;
         });
-      })
+      }).catch(() => Response.error())
     );
     return;
   }
@@ -106,7 +111,7 @@ self.addEventListener('fetch', (e) => {
         }
         return res;
       });
-    })
+    }).catch(() => Response.error())   // offline and not cached: a plain network error, not an unhandled rejection
   );
 });
 
