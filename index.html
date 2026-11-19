@@ -2458,42 +2458,53 @@ function renderResult(){
 /* ===================== boot / wire ===================== */
 /* Ping the Worker: confirm it's live and report which coordinate source
    it's currently serving (MET official vs built-in fallback table). */
+/* Last known Worker status, kept as data (not text) so it can be re-rendered
+   in the current language — switching language used to leave this box in the
+   language it was checked in. */
+let wsState=null;
+function renderWorkerStatus(){
+  const t=T(),el=$('#workerStatus'),w=wsState;
+  if(!el||!w) return;
+  if(w.kind==='checking'){ el.className='worker-status show warn';el.innerHTML=t.wsChecking; }
+  else if(w.kind==='nourl'){ el.className='worker-status show err';el.innerHTML=t.wsNoUrl; }
+  else if(w.kind==='offline'){
+    el.className='worker-status show err';
+    el.innerHTML=`<span class="ws-dot r"></span><b>${t.wsOffline}</b><br>${t.wsHint}`;
+  }else{
+    const mix=w.sources?`<br>${t.wsMix(w.sources)}`:'';
+    if(w.source==='met'){
+      el.className='worker-status show ok';
+      el.innerHTML=`<span class="ws-dot g"></span><b>${t.wsOnline}</b> · ${t.wsSrcMet}<br>${t.wsCount(w.count)}${mix}`;
+    }else if(w.source==='table'){
+      el.className='worker-status show warn';
+      el.innerHTML=`<span class="ws-dot a"></span><b>${t.wsOnline}</b> · ${t.wsSrcTable}<br>${t.wsCount(w.count)}${mix}`;
+    }else{
+      el.className='worker-status show warn';
+      el.innerHTML=`<span class="ws-dot a"></span><b>${t.wsOnline}</b> · ${t.wsSrcUnknown}${mix}`;
+    }
+  }
+}
 async function checkWorker(){
-  const t=T(),el=$('#workerStatus');
+  const set=w=>{ wsState=w; renderWorkerStatus(); };
   const base=(state.settings.metProxy||'').trim().replace(/\/+$/,'');
-  el.className='worker-status show warn';el.innerHTML=t.wsChecking;
-  if(!base){ el.className='worker-status show err';el.innerHTML=t.wsNoUrl;return; }
+  set({kind:'checking'});
+  if(!base){ set({kind:'nourl'}); return; }
   try{
     const h=await fetch(`${base}/health`);
     if(!h.ok) throw new Error('health '+h.status);
     const hj=await h.json();
     if(!hj.ok) throw new Error('unhealthy');
-    // True coverage: /towns reports every MET location the Worker can resolve.
-    // (Previously probed /nearest?n=3 and displayed its count — which is always
-    // 3, the size of the sample we asked for, not the coverage.)
-    // `source` used to be the source of the FIRST location only, while the list
-    // is routinely a mix of MET-official, bundled-table and geocoded coordinates
-    // — so a single 'met' row could label the whole set "MET official ✓".
-    // The Worker now returns per-source counts; show those.
+    // True coverage: /towns reports every MET location the Worker can resolve,
+    // with per-source counts (the list is routinely a mix of MET-official,
+    // bundled-table and geocoded coordinates).
     let source='unknown',count=0,sources=null;
     try{
       const n=await fetch(`${base}/towns`);
       if(n.ok){const nj=await n.json();source=nj.source||'unknown';count=nj.count||0;sources=nj.sources||null;}
     }catch(e){}
-    const mix=sources?`<br>${t.wsMix(sources)}`:'';
-    if(source==='met'){
-      el.className='worker-status show ok';
-      el.innerHTML=`<span class="ws-dot g"></span><b>${t.wsOnline}</b> · ${t.wsSrcMet}<br>${t.wsCount(count)}${mix}`;
-    }else if(source==='table'){
-      el.className='worker-status show warn';
-      el.innerHTML=`<span class="ws-dot a"></span><b>${t.wsOnline}</b> · ${t.wsSrcTable}<br>${t.wsCount(count)}${mix}`;
-    }else{
-      el.className='worker-status show warn';
-      el.innerHTML=`<span class="ws-dot a"></span><b>${t.wsOnline}</b> · ${t.wsSrcUnknown}${mix}`;
-    }
+    set({kind:'online',source,count,sources});
   }catch(e){
-    el.className='worker-status show err';
-    el.innerHTML=`<span class="ws-dot r"></span><b>${t.wsOffline}</b><br>${t.wsHint}`;
+    set({kind:'offline'});
   }
 }
 function saveAutoLog(){
@@ -2578,7 +2589,9 @@ function setLangDirect(l){
   if(!I18N_LANGS.includes(l)) return false;
   LANG=l;state.lang=LANG;save();
   paintLabels();renderLocList();if(lastResult)renderResult();
-  updateLangSwitch();
+  updateLangSwitch();renderWorkerStatus();
+  if(rankCardOpen) renderRanking();
+  if(metSwitchFarmId) renderMetOptions();   // MET switch modal is open
   return true;
 }
 function showLangPick(on){
