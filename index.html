@@ -297,6 +297,21 @@
   .update-go{background:#fff;color:var(--accent-dark);border:none;border-radius:8px;
     padding:7px 16px;font-weight:700;font-size:.84rem;cursor:pointer;flex-shrink:0}
   .update-go:active{opacity:.8}
+  .update-bar span{flex:1}
+  .update-x{background:transparent;color:#fff;border:none;font-size:1rem;padding:4px 6px;cursor:pointer;flex-shrink:0;opacity:.85}
+  /* first-launch language picker: full-screen, above everything but the update bar */
+  #langpick{position:fixed;inset:0;z-index:9000;background:var(--bg);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;
+    padding:calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom))}
+  #langpick[hidden]{display:none}
+  #langpick:focus{outline:0}
+  #langpick img{width:88px;height:88px;border-radius:20px;box-shadow:var(--shadow)}
+  #langpick .lptitle{margin:0 0 14px;font-size:1.25rem;font-weight:800;color:var(--ink)}
+  #langpick button{width:min(18rem,84vw);height:58px;border-radius:14px;border:1.5px solid var(--line);
+    background:var(--panel);color:var(--ink);font-size:1.1rem;font-weight:700;font-family:inherit;cursor:pointer;
+    box-shadow:var(--shadow)}
+  #langpick button:active{background:var(--accent);border-color:var(--accent);color:#fff}
+  body.picking{overflow:hidden}
   .legend{font-size:.72rem;color:var(--ink-mid);line-height:1.7;margin-top:9px}
   details{margin-top:9px}summary{cursor:pointer;font-size:.78rem;color:var(--accent);font-weight:600}
   .foot{text-align:center;color:var(--ink-dim);font-size:.68rem;margin-top:16px;line-height:1.6;white-space:pre-line}
@@ -558,6 +573,14 @@
     </div>
   </div>
 </main>
+<!-- First-launch language picker: shown only when no valid language is saved. -->
+<div id="langpick" role="dialog" aria-modal="true" tabindex="-1" aria-label="中文 · English · Bahasa Melayu" hidden>
+  <img src="./icon-192.png" alt="">
+  <p class="lptitle">ModelDuel Lab</p>
+  <button type="button" data-lang="zh" lang="zh-Hans">中文</button>
+  <button type="button" data-lang="en" lang="en">English</button>
+  <button type="button" data-lang="ms" lang="ms">Bahasa Melayu</button>
+</div>
 <!-- OLED-black drive overlay — sibling of <main> (NOT inside it), so
      body.drive-dark main{visibility:hidden} can't hide it via inheritance. -->
 <div id="driveOverlay" aria-live="polite">
@@ -776,7 +799,7 @@ function load(){
     if(s.settings.autoLog==null) s.settings.autoLog='off';
     return s;
   }}catch(e){}
-  return {locations:[],seeded:false,seedVersion:0,lastResult:null,lang:'zh',
+  return {locations:[],seeded:false,seedVersion:0,lastResult:null,lang:null,
           log:{},settings:{metProxy:DEFAULT_MET_PROXY,autoLog:'off'}};
 }
 function save(){localStorage.setItem(STORE_KEY,JSON.stringify(state));}
@@ -840,7 +863,11 @@ if(state.seeded && state.locations && (state.seedVersion||0)<SEED_VERSION){
 }
 
 const I18N_LANGS=['zh','en','ms'];
-let LANG=I18N_LANGS.includes(state.lang)?state.lang:'zh';
+/* No valid saved language = first launch: ask before the app is usable.
+   (Not a separate "onboarded" flag, so a corrupted value also leads back to
+   the picker instead of a broken UI.) 'zh' is only what renders behind it. */
+const FIRST_LAUNCH=!I18N_LANGS.includes(state.lang);
+let LANG=FIRST_LAUNCH?'zh':state.lang;
 // Restore the last-viewed farm so returning users (often multi-farm owners) land
 // back where they were. Blank only on first launch (nothing persisted yet).
 let activeLoc=(state.activeLoc && state.locations.some(l=>l.id===state.activeLoc && !l.deleted))
@@ -2544,11 +2571,24 @@ function openSettings(){
   checkWorker();   // ping immediately so the status is fresh on open
 }
 function closeSettings(){ $('#settingsModal').style.display='none'; }
+/* The one place a language choice is saved — used by the Settings switch and
+   the first-launch picker. Always saves, even when l is already showing
+   (picking the default must still be remembered). */
 function setLangDirect(l){
+  if(!I18N_LANGS.includes(l)) return false;
   LANG=l;state.lang=LANG;save();
   paintLabels();renderLocList();if(lastResult)renderResult();
   updateLangSwitch();
+  return true;
 }
+function showLangPick(on){
+  $('#langpick').hidden=!on;
+  document.body.classList.toggle('picking',on);
+  for(const n of [$('header'),$('main')]) if(n) n.inert=on;   // no wandering into the app behind it
+}
+$('#langpick').onclick=e=>{
+  if(setLangDirect(e.target.getAttribute('data-lang'))){ showLangPick(false); window.scrollTo(0,0); }
+};
 function updateLangSwitch(){
   for(const [id,l] of [['langZh','zh'],['langEn','en'],['langMs','ms']]){
     const b=$('#'+id); if(b) b.classList.toggle('on',LANG===l);
@@ -2558,6 +2598,7 @@ $('#btnAdd').addEventListener('click',saveLoc);
 
 populateAutoLogOptions();
 paintLabels();renderLocList();updateLangSwitch();
+if(FIRST_LAUNCH){ showLangPick(true); $('#langpick').focus(); }   // synchronous: no flash of the default language
 setLocCard(activeLocs().length===0);   // collapsed when seeds exist; open when empty
 // Returning user: restore their last-viewed farm's scorecard. First launch:
 // activeLoc is null, so nothing shows until they pick a farm.
@@ -2565,47 +2606,34 @@ if(activeLoc){ runDuel(); } else { updateLocHint(); }
 /* fire-and-forget once-per-day auto-log; never blocks first paint */
 setTimeout(()=>{ autoLogOnOpen().catch(()=>{}); }, 400);
 
-/* Register the real service worker for offline support. Must be a file at the
+/* Register the service worker for offline support. Must be a file at the
    site root (./sw.js) — a blob URL can't cache the app shell.
-   Also watches for a newly-deployed version and offers a one-tap refresh, so
-   updates land without a manual reinstall. */
-if('serviceWorker' in navigator){
-  let _reloading=false, _updateRequested=false;
-  // Reload ONLY after a user-requested update takes control — never on the
-  // first-ever install (claim() fires controllerchange then too).
-  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    if(!_updateRequested || _reloading) return;
-    _reloading=true; window.location.reload();
-  });
-  window.__requestSwUpdate=()=>{ _updateRequested=true; };
+   Updates need no version bump: the app opens from the cache, then asks the
+   worker to "check"; if index.html changed on the server the worker answers
+   "updated" and we offer a one-tap refresh. Checked on every launch and
+   whenever the app returns to the foreground (installed apps stay open for days). */
+if('serviceWorker' in navigator && location.protocol!=='file:'){
+  const askForUpdate=()=>{
+    if(navigator.onLine===false) return;
+    navigator.serviceWorker.ready.then(reg=>{ if(reg.active) reg.active.postMessage('check'); }).catch(()=>{});
+  };
+  navigator.serviceWorker.addEventListener('message',e=>{ if(e.data==='updated') showUpdateBar(); });
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('./sw.js').then(reg=>{
-      // A new version is waiting immediately (installed while old one runs)
-      if(reg.waiting) showUpdateBar(reg.waiting);
-      // A new version starts installing later
-      reg.addEventListener('updatefound',()=>{
-        const nw=reg.installing; if(!nw) return;
-        nw.addEventListener('statechange',()=>{
-          // installed + an existing controller => it's an update, not first install
-          if(nw.state==='installed' && navigator.serviceWorker.controller) showUpdateBar(nw);
-        });
-      });
-      // Poll for updates when the app regains focus (cheap, catches new deploys)
-      document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') reg.update().catch(()=>{}); });
-    }).catch(()=>{});
+    navigator.serviceWorker.register('./sw.js').then(askForUpdate).catch(()=>{});
   });
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') askForUpdate(); });
 }
-/* Small bar telling the user a new version is ready; tap → activate + reload. */
-function showUpdateBar(worker){
+/* Small bar telling the user a new version is ready; tap → reload into it
+   (the worker has already saved the new copy). Dismissed → it simply appears
+   on the next launch. All app state lives in localStorage, so reloading is safe. */
+function showUpdateBar(){
   if($('#updateBar')) return;   // already showing
   const t=T();
   const bar=document.createElement('div');
-  bar.id='updateBar'; bar.className='update-bar';
-  bar.innerHTML=`<span>${t.updateReady}</span><button class="update-go">${t.updateGo}</button>`;
-  bar.querySelector('.update-go').onclick=()=>{
-    if(window.__requestSwUpdate) window.__requestSwUpdate();
-    worker.postMessage({type:'SKIP_WAITING'});
-  };
+  bar.id='updateBar'; bar.className='update-bar'; bar.setAttribute('role','status');
+  bar.innerHTML=`<span>${t.updateReady}</span><button class="update-go">${t.updateGo}</button><button class="update-x" aria-label="✕">✕</button>`;
+  bar.querySelector('.update-go').onclick=()=>location.reload();
+  bar.querySelector('.update-x').onclick=()=>bar.remove();
   document.body.appendChild(bar);
 }
 

@@ -1,10 +1,16 @@
-/* ModelDuel Lab — service worker. Precaches the app shell so it works fully
-   offline. Network-first for the page (so new deploys are picked up when
-   online), cache-first for static icons. Bump CACHE on every deploy. */
-const CACHE = 'modelduel-20261119-26';
+/* ModelDuel Lab — self-updating service worker.
+
+   No version number to bump. The app opens instantly from the cache, then the
+   page sends "check": every shell file is re-fetched, the cache is refreshed,
+   and if index.html came back different every open window is sent "updated"
+   so it can show its "new version ready" bar. To deploy, just push. */
+'use strict';
+
+const CACHE_PREFIX = 'modelduel-';     // unique to THIS app — see activate
+const CACHE = 'modelduel-shell';       // fixed name; never changes between deploys
+const INDEX = './index.html';
 const SHELL = [
-  './',
-  './index.html',
+  INDEX,
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
@@ -12,57 +18,112 @@ const SHELL = [
   './icon.svg'
 ];
 
+function sameBytes(a, b) {
+  if (a.byteLength !== b.byteLength) return false;
+  const x = new Uint8Array(a), y = new Uint8Array(b);
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
+  return true;
+}
+
+/* Fetch one file past the HTTP cache and store it. Resolves true only when a
+   copy was already cached and the new one differs. Errors and non-200
+   responses leave the cache alone, so a 404/503 can never replace the app. */
+function refresh(url) {
+  return fetch(url, { cache: 'no-cache' }).then((res) => {
+    if (!res || !res.ok) return false;
+    return caches.open(CACHE).then((c) =>
+      c.match(url).then((old) =>
+        Promise.all([old ? old.arrayBuffer() : null, res.clone().arrayBuffer()]).then((b) => {
+          const changed = !!b[0] && !sameBytes(b[0], b[1]);
+          return c.put(url, res).then(() => changed);
+        })
+      )
+    );
+  }).catch(() => false);
+}
+
+function refreshShell() {
+  return Promise.all(SHELL.map(refresh)).then((changed) => changed[SHELL.indexOf(INDEX)]);
+}
+
+/* install: precache, then take over at once. Safe because the cache name is
+   stable — a new worker never strands an open page on a deleted cache. */
 self.addEventListener('install', (e) => {
-  // Precache the shell but DON'T auto-activate — wait so the app can show an
-  // "update ready" prompt. The page sends SKIP_WAITING when the user taps it.
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL))
-  );
+  e.waitUntil(refreshShell().then(() => self.skipWaiting()));
 });
 
-self.addEventListener('message', (e) => {
-  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
-});
-
+/* activate: delete only THIS app's other caches (the old dated ones). Cache
+   Storage is shared by the whole origin — on <user>.github.io that is every
+   project page — so never delete caches without our prefix. */
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+      Promise.all(keys.map((k) =>
+        (k.indexOf(CACHE_PREFIX) === 0 && k !== CACHE) ? caches.delete(k) : null))
     ).then(() => self.clients.claim())
   );
 });
 
+/* fetch:
+   - navigations  → the cached app, instantly; network only if nothing is cached
+   - same-origin  → cache first, then network, and cache what comes back
+   - cross-origin → left alone (Open-Meteo, MET worker are the page's business)
+   Freshness is handled by the "check" message, not here. */
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
-  const url = new URL(req.url);
-
-  // Only handle our own origin; let API calls (Open-Meteo, MET worker) hit network
+  let url;
+  try { url = new URL(req.url); } catch (err) { return; }
   if (url.origin !== self.location.origin) return;
 
-  // Navigations / HTML: network-first, fall back to cached shell when offline
-  if (req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html')) {
+  if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('./index.html', copy)).catch(() => {});
+      caches.match(INDEX).then((hit) => {
+        if (hit) return hit;
+        return fetch(req).then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(INDEX, copy));
+          }
           return res;
-        })
-        .catch(() => caches.match('./index.html').then((r) => r || caches.match('./')))
+        });
+      })
     );
     return;
   }
 
-  // Static assets: cache-first
   e.respondWith(
-    caches.match(req).then((cached) =>
-      cached ||
-      fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+    caches.match(req).then((hit) => {
+      if (hit) return hit;
+      return fetch(req).then((res) => {
+        if (res && res.status === 200 && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
         return res;
-      }).catch(() => cached)
-    )
+      });
+    })
   );
+});
+
+self.addEventListener('message', (e) => {
+  /* "check" from a page: refresh the shell and, if index.html changed, tell
+     every open window so each can offer a reload. */
+  if (e.data === 'check') {
+    e.waitUntil(
+      refreshShell().then((changed) => {
+        if (!changed) return;
+        return self.clients.matchAll({ type: 'window' }).then((list) => {
+          list.forEach((c) => c.postMessage('updated'));
+        });
+      })
+    );
+    return;
+  }
+  /* Pages loaded before this worker existed show the OLD update bar, whose
+     button sends SKIP_WAITING and then waits for a controller change that has
+     already happened. Reload that page for it so the button still works. */
+  if (e.data && e.data.type === 'SKIP_WAITING' && e.source && e.source.navigate) {
+    e.waitUntil(e.source.navigate(e.source.url).catch(() => {}));
+  }
 });
